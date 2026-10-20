@@ -1474,7 +1474,7 @@ function printProfessionalOrder() {
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-zA-Z0-9_-]+/g, '_')
         .replace(/^_+|_+$/g, '') || 'SinDato';
-    const numeroFormateado = /^\\d+$/.test(numero)
+    const numeroFormateado = /^\d+$/.test(numero)
         ? numero.padStart(4, '0')
         : safePart(numero);
     const fileName = `P${numeroFormateado}-${safePart(cliente)}`;
