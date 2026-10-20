@@ -1048,3 +1048,34 @@ th {
 /* ============================================================
    FIN DE LA HOJA DE ESTILOS
    ============================================================ */
+
+
+/* WAIPARA 2026: identidad visual y experiencia de uso */
+:root { --waipara-orange:#f58212; --waipara-deep:#d66505; --waipara-cream:#fff4e8; --waipara-ink:#24313d; color:var(--waipara-ink); background:#fff8f1; }
+header { background:var(--waipara-ink); border-bottom:5px solid var(--waipara-orange); }
+.waipara-heading { display:flex; align-items:center; gap:16px; }
+.waipara-logo { width:108px; max-height:74px; object-fit:contain; background:#fff; padding:5px; border-radius:9px; }
+button.primary, .tab.active { background:var(--waipara-orange); border-color:var(--waipara-deep); color:#fff; }
+button.primary:hover { background:var(--waipara-deep); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline:3px solid #ffbd75; outline-offset:2px; }
+.bar,.panel,.stat { border-color:#f0dfcf; box-shadow:0 3px 16px #57330a0a; }
+.order { cursor:grab; transition:transform .16s ease,box-shadow .16s ease,opacity .16s ease; touch-action:pan-y; }
+.order:hover { transform:translateY(-2px); box-shadow:0 5px 15px #593e1d24; }
+.order.dragging { opacity:.35; transform:scale(.97); cursor:grabbing; }
+.drop { min-height:110px; transition:background-color .18s ease,box-shadow .18s ease; border-radius:10px; }
+.drop.over { background:var(--waipara-cream)!important; box-shadow:inset 0 0 0 2px var(--waipara-orange); }
+.drop.saving { opacity:.65; pointer-events:none; }
+.optimize-label { display:flex; align-items:center; gap:8px; font-size:13px; }
+.print-brand { display:flex; align-items:center; gap:12px; }
+.print-logo { width:100px; max-height:66px; object-fit:contain; }
+.print-only-title { display:none; }
+@media print {
+  @page { size:A4; margin:12mm; }
+  .print-brand { border-bottom:2px solid var(--waipara-orange)!important; }
+  .print-only-title { display:block!important; font-size:22px!important; color:#24313d!important; }
+  #orderTitle { display:none!important; }
+  .print-order-details { background:#fff8f1!important; border-color:#efd7bf!important; }
+  .product-head { background:#fff0dc!important; }
+  .product-line,.product-grid,.product-foot { break-inside:avoid; }
+  .print-logo { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+}
