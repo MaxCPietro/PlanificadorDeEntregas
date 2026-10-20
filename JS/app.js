@@ -1639,7 +1639,7 @@ function printProfessionalOrder() {
             }
             toolbar.style.display = 'none';
             await win.html2pdf().set({
-                margin: [13, 14, 15, 14],
+                margin: 0, // El HTML ya incorpora márgenes visuales; html2pdf requiere un valor válido.
                 filename: fileName + '.pdf',
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
