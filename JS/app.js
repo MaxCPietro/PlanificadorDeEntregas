@@ -1474,7 +1474,10 @@ function printProfessionalOrder() {
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-zA-Z0-9_-]+/g, '_')
         .replace(/^_+|_+$/g, '') || 'SinDato';
-    const fileName = `Pedido${safePart(numero)}-${safePart(cliente)}`;
+    const numeroFormateado = /^\\d+$/.test(numero)
+        ? numero.padStart(4, '0')
+        : safePart(numero);
+    const fileName = `P${numeroFormateado}-${safePart(cliente)}`;
     const dateAR = value => {
         if (!value) return 'Sin programar';
         const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -1607,6 +1610,7 @@ function printProfessionalOrder() {
     win.document.open();
     win.document.write(html);
     win.document.close();
+    win.document.title = fileName;
     win.focus();
     // El diálogo permite elegir «Guardar como PDF».
     win.setTimeout(() => win.print(), 450);
