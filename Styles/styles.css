@@ -1079,3 +1079,5 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
   .product-line,.product-grid,.product-foot { break-inside:avoid; }
   .print-logo { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
 }
+
+header #logout{background:#fff!important;color:#172534!important;border:1px solid #cfd8e2!important;font-weight:700}header #logout:hover{background:#edf3f8!important;color:#172534!important}.ui-sort-btn{background:transparent!important;border:0!important;color:inherit!important;padding:5px 3px;font-weight:700;white-space:nowrap;cursor:pointer}.ui-day-sort{padding:3px 6px;font-size:11px;background:#fff;color:#172534;border:1px solid #cfd8e2}.order.dragging{opacity:.45}
