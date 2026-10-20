@@ -1656,6 +1656,9 @@ function printProfessionalOrder() {
         }
     };
     win.focus();
+    // Generar y descargar el PDF automáticamente, sin abrir el diálogo de impresión.
+    // Se conserva el botón Imprimir para quien necesite una copia en papel.
+    downloadButton.click();
 }
 
 $('#printOrder').onclick = printProfessionalOrder;
