@@ -413,6 +413,7 @@ function orderCard(p) {
     const e = document.createElement('article');
     e.className = 'order ' + p.estado.replaceAll(' ', '-');
     e.draggable = true;
+    e.setAttribute('aria-label', `Pedido ${p.numero}, arrastrar para cambiar fecha`);
 
     e.innerHTML = `
         <b>#${esc(p.numero)}</b>
@@ -429,7 +430,13 @@ function orderCard(p) {
     `;
 
     e.ondragstart = ev => {
+        ev.dataTransfer.effectAllowed = 'move';
         ev.dataTransfer.setData('text/plain', p.id);
+        requestAnimationFrame(() => e.classList.add('dragging'));
+    };
+    e.ondragend = () => {
+        e.classList.remove('dragging');
+        document.querySelectorAll('.drop.over').forEach(z => z.classList.remove('over'));
     };
 
     e.ondblclick = () => editOrder(p.id);
@@ -445,11 +452,12 @@ function orderCard(p) {
 function dropZone(el, date) {
     el.ondragover = e => {
         e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
         el.classList.add('over');
     };
 
-    el.ondragleave = () => {
-        el.classList.remove('over');
+    el.ondragleave = e => {
+        if (!el.contains(e.relatedTarget)) el.classList.remove('over');
     };
 
     el.ondrop = async e => {
@@ -459,8 +467,8 @@ function dropZone(el, date) {
         const id = e.dataTransfer.getData('text/plain');
         const p = cache.pedidos.find(x => x.id === id);
 
-        if (!p) return;
-
+        if (!p || (p.fecha_entrega || null) === date) return;
+        el.classList.add('saving');
         const { error } = await sb
             .from('pedidos')
             .update({
@@ -474,13 +482,15 @@ function dropZone(el, date) {
             })
             .eq('id', id);
 
+        el.classList.remove('saving');
         if (error) {
-            toast(error.message);
+            toast('No se pudo mover el pedido: ' + error.message);
             return;
         }
 
         await loadAll();
         render();
+        toast(date ? 'Pedido reprogramado para ' + date : 'Pedido devuelto a pendientes');
     };
 }
 
@@ -561,6 +571,7 @@ function renderOrders() {
                     <th>Estado</th>
                     <th>Transportista</th>
                     <th>Productos</th>
+                    <th>Bultos</th>
                     <th>Total</th>
                     <th></th>
                 </tr>
@@ -575,6 +586,7 @@ function renderOrders() {
                         <td>${esc(p.estado)}</td>
                         <td>${esc(p.transportista || '—')}</td>
                         <td>${orderProducts(p.id).length}</td>
+                        <td><strong>${bultos(p).toLocaleString('es-AR')}</strong></td>
                         <td>${money(orderTotal(p))}</td>
                         <td>
                             <button data-edit-order="${p.id}">Editar</button>
@@ -1275,6 +1287,7 @@ function updatePrintDetails() {
         x => x.id === $('#oClient').value
     ) || {};
 
+    $('#printOrderTitle').textContent = `PEDIDO N.º ${$('#oNumber').value || '—'}`;
     $('#printOrderMeta').textContent =
         `Pedido #${$('#oNumber').value || '—'} · ` +
         `Fecha: ${$('#oDate').value || '—'}`;
@@ -2040,13 +2053,16 @@ function packTrips(orders, capacity = 310) {
 $('#optimizeRoutes').onclick = async () => {
     if (!map) initMap();
 
+    const scope = $('#optimizeScope')?.value || 'all';
     const dated = mapGroups();
-
-    dated.delete('SIN FECHA');
+    if (scope === 'planned') dated.delete('SIN FECHA');
+    if (scope === 'unplanned') {
+        for (const key of [...dated.keys()]) if (key !== 'SIN FECHA') dated.delete(key);
+    }
 
     if (!dated.size) {
         toast(
-            'Primero asigná fecha de entrega y coordenadas a los pedidos.'
+            'No hay pedidos con coordenadas para el alcance seleccionado.'
         );
 
         return;

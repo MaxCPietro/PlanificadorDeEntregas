@@ -34,12 +34,15 @@
 
     <!-- [09] CABECERA: título, descripción y estado de conexión -->
     <header>
-        <div>
+        <div class="waipara-heading">
+            <img src="/assets/logo-waipara.png" alt="Waipara Distribuidora" class="waipara-logo" onerror="this.style.display='none'">
+            <div>
             <h1>Planificador de Entregas · V6</h1>
             <p>
                 Base online relacional · Clientes · Vendedores ·
                 Productos · Pedidos · Mapa
             </p>
+            </div>
         </div>
 
         <!-- [09.1] Controles de conexión y cierre de sesión -->
@@ -217,6 +220,9 @@
                             Calcular rutas por fecha
                         </button>
 
+                        <label class="optimize-label" for="optimizeScope">Optimizar
+                            <select id="optimizeScope"><option value="all">Todos los pedidos</option><option value="planned">Solo planificados</option><option value="unplanned">Solo sin planificar</option></select>
+                        </label>
                         <button id="optimizeRoutes" class="primary">
                             Sugerir distribución óptima (310 bultos/viaje)
                         </button>
@@ -302,12 +308,13 @@
 
             <!-- [21.1] Encabezado para impresión o PDF -->
             <div class="print-brand">
-                <strong>WAIPARA DISTRIBUIDORA</strong><br>
-                Comprobante de pedido
+                <img src="/assets/logo-waipara.png" alt="Waipara" class="print-logo" onerror="this.style.display='none'">
+                <div><strong>WAIPARA DISTRIBUIDORA</strong><br>Comprobante de pedido</div>
             </div>
 
             <div class="print-head">
                 <h2 id="orderTitle">Nuevo pedido</h2>
+                <h2 id="printOrderTitle" class="print-only-title">PEDIDO N.º —</h2>
                 <p id="printOrderMeta"></p>
                 <p class="print-order-details" id="printOrderDetails"></p>
             </div>
