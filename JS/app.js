@@ -1602,18 +1602,60 @@ function printProfessionalOrder() {
     <footer class="footer"><span>WAIPARA DISTRIBUIDORA</span>
         <span>Comprobante de pedido · N.º ${esc(numero)}</span></footer>
     </body></html>`;
+    // Chrome no garantiza el nombre del archivo mediante window.print().
+    // Se ofrece descarga directa con nombre exacto, conservando impresión manual.
     const win = window.open('', '_blank');
     if (!win) {
-        toast('Habilitá las ventanas emergentes para imprimir el pedido');
+        toast('Habilitá las ventanas emergentes para generar el PDF');
         return;
     }
     win.document.open();
     win.document.write(html);
     win.document.close();
     win.document.title = fileName;
+
+    const toolbar = win.document.createElement('div');
+    toolbar.id = 'pdfActions';
+    toolbar.style.cssText = 'position:fixed;top:8px;right:12px;z-index:9999;display:flex;gap:8px;background:white;padding:8px;border:1px solid #ddd;border-radius:8px;box-shadow:0 2px 12px #0002';
+    toolbar.innerHTML = '<button id="downloadOrderPdf" type="button">Descargar PDF</button><button id="printOrderPdf" type="button">Imprimir</button>';
+    win.document.body.prepend(toolbar);
+    const style = win.document.createElement('style');
+    style.textContent = '@media print { #pdfActions { display:none !important } }';
+    win.document.head.appendChild(style);
+    win.document.getElementById('printOrderPdf').onclick = () => win.print();
+    const downloadButton = win.document.getElementById('downloadOrderPdf');
+    downloadButton.onclick = async () => {
+        downloadButton.disabled = true;
+        downloadButton.textContent = 'Generando PDF...';
+        try {
+            if (!win.html2pdf) {
+                await new Promise((resolve, reject) => {
+                    const script = win.document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                    script.onload = resolve;
+                    script.onerror = () => reject(new Error('No se pudo cargar el generador PDF'));
+                    win.document.head.appendChild(script);
+                });
+            }
+            toolbar.style.display = 'none';
+            await win.html2pdf().set({
+                margin: [13, 14, 15, 14],
+                filename: fileName + '.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['css', 'legacy'] }
+            }).from(win.document.body).save();
+        } catch (error) {
+            console.error('Error generando PDF:', error);
+            win.alert('No se pudo descargar el PDF. Usá Imprimir como alternativa.');
+        } finally {
+            toolbar.style.display = 'flex';
+            downloadButton.disabled = false;
+            downloadButton.textContent = 'Descargar PDF';
+        }
+    };
     win.focus();
-    // El diálogo permite elegir «Guardar como PDF».
-    win.setTimeout(() => win.print(), 450);
 }
 
 $('#printOrder').onclick = printProfessionalOrder;
