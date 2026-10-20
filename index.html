@@ -1,0 +1,556 @@
+
+<!DOCTYPE html>
+<!-- [01] Declaración del documento HTML5 -->
+<html lang="es">
+
+<head>
+    <!-- [02] Configuración del documento -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- [03] Título de la pestaña del navegador -->
+    <title>Planificador de Entregas V6</title>
+
+    <!-- [04] Hoja de estilos de Leaflet para el mapa -->
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    >
+
+    <!-- [05] Estilos propios de la aplicación -->
+    <link rel="stylesheet" href="/Styles/styles.css">
+
+    <!-- [06] Biblioteca cliente de Supabase para JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- [07] Biblioteca Leaflet para mapas interactivos -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- [08] Configuración de la conexión con Supabase -->
+    <script src="/JS/config.js"></script>
+</head>
+
+<body>
+
+    <!-- [09] CABECERA: título, descripción y estado de conexión -->
+    <header>
+        <div>
+            <h1>Planificador de Entregas · V6</h1>
+            <p>
+                Base online relacional · Clientes · Vendedores ·
+                Productos · Pedidos · Mapa
+            </p>
+        </div>
+
+        <!-- [09.1] Controles de conexión y cierre de sesión -->
+        <div class="actions">
+            <span id="connection" class="conn">
+                Configurá Supabase
+            </span>
+            <button id="logout" class="hidden">
+                Cerrar sesión
+            </button>
+        </div>
+    </header>
+
+    <!-- [10] AUTENTICACIÓN: acceso de usuarios -->
+    <section id="loginPanel" class="panel auth">
+        <h2>Ingresar al planificador</h2>
+
+        <p class="muted">
+            Usá el usuario creado en Authentication dentro de tu
+            proyecto Supabase.
+        </p>
+
+        <!-- [10.1] Formulario de inicio de sesión -->
+        <form id="loginForm" class="form">
+
+            <label class="full">
+                Email
+                <input
+                    id="emailLogin"
+                    type="email"
+                    required
+                    autocomplete="username"
+                >
+            </label>
+
+            <label class="full">
+                Contraseña
+                <input
+                    id="passwordLogin"
+                    type="password"
+                    required
+                    autocomplete="current-password"
+                >
+            </label>
+
+            <button class="primary full">Ingresar</button>
+        </form>
+
+        <!-- [10.2] Mensajes de autenticación -->
+        <p id="loginMsg" class="help"></p>
+    </section>
+
+    <!-- [11] APLICACIÓN PRINCIPAL: oculta hasta iniciar sesión -->
+    <main id="app" class="wrap hidden">
+
+        <!-- [11.1] Aviso informativo sobre almacenamiento y servicios -->
+        <div class="hint">
+            Los clientes, vendedores, productos y pedidos se guardan
+            en Supabase y se comparten entre usuarios autenticados de
+            este proyecto. Los datos iniciales son de ejemplo.
+            Para geocodificación y rutas hace falta internet.
+        </div>
+
+        <!-- [12] BARRA DE HERRAMIENTAS Y FILTROS -->
+        <div class="bar">
+
+            <!-- [12.1] Navegación semanal del calendario -->
+            <div class="actions">
+                <button id="prev">‹ Semana anterior</button>
+                <button id="today">Hoy</button>
+                <button id="next">Semana siguiente ›</button>
+                <b id="week"></b>
+            </div>
+
+            <!-- [12.2] Filtros de pedidos -->
+            <div class="actions">
+
+                <!-- Filtro por vendedor -->
+                <select id="filterSeller">
+                    <option value="">Todos los vendedores</option>
+                </select>
+
+                <!-- Filtro por transportista -->
+                <select id="filterDriver">
+                    <option value="">Todos los transportistas</option>
+                    <option>Daniel Aguilar</option>
+                    <option>Valentino Correa</option>
+                    <option>Otro..</option>
+                </select>
+
+                <!-- Filtro por estado del pedido -->
+                <select id="filterStatus">
+                    <option value="">Todos los estados</option>
+                    <option>PENDIENTE</option>
+                    <option>PROGRAMADO</option>
+                    <option>EN REPARTO</option>
+                    <option>ENTREGADO</option>
+                    <option>NO ENTREGADO</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- [13] INDICADORES RESUMIDOS -->
+        <!-- JavaScript genera las estadísticas dentro de este contenedor -->
+        <section id="stats" class="stats"></section>
+
+        <!-- [14] NAVEGACIÓN ENTRE MÓDULOS -->
+        <nav class="tabs">
+            <button class="tab active" data-view="calendarView">
+                Calendario
+            </button>
+            <button class="tab" data-view="mapView">
+                Mapa de pendientes
+            </button>
+            <button class="tab" data-view="ordersView">
+                Pedidos
+            </button>
+            <button class="tab" data-view="clientsView">
+                Clientes
+            </button>
+            <button class="tab" data-view="sellersView">
+                Vendedores
+            </button>
+            <button class="tab" data-view="productsView">
+                Productos
+            </button>
+        </nav>
+
+        <!-- [15] MÓDULO CALENDARIO DE ENTREGAS -->
+        <section id="calendarView" class="view active">
+
+            <div class="planner">
+
+                <!-- [15.1] Panel de pedidos sin programar -->
+                <aside class="panel">
+                    <div class="section-head">
+                        <b>
+                            Sin programar
+                            <span id="backlogCount"></span>
+                        </b>
+
+                        <button id="newOrder" class="primary">
+                            + Pedido
+                        </button>
+                    </div>
+
+                    <!-- Lista dinámica de pedidos pendientes de programación -->
+                    <div id="backlog" class="drop"></div>
+
+                    <p class="help">
+                        Arrastrá pedidos al día correspondiente.
+                        Doble clic para editar.
+                    </p>
+                </aside>
+
+                <!-- [15.2] Calendario semanal -->
+                <div class="panel calendar-scroll">
+                    <div id="calendar" class="calendar"></div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- [16] MÓDULO MAPA Y PLANIFICACIÓN DE RUTAS -->
+        <section id="mapView" class="view">
+
+            <div class="panel">
+
+                <!-- [16.1] Acciones para calcular rutas y distribuir cargas -->
+                <div class="bar map-actions">
+                    <b>Mapa de pendientes</b>
+
+                    <div class="actions">
+                        <button id="route" class="primary">
+                            Calcular rutas por fecha
+                        </button>
+
+                        <button id="optimizeRoutes" class="primary">
+                            Sugerir distribución óptima (310 bultos/viaje)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- [16.2] Mapa y listado de paradas -->
+                <div class="mapgrid">
+
+                    <!-- Mapa interactivo renderizado con Leaflet -->
+                    <div id="map"></div>
+
+                    <!-- Panel lateral con paradas de entrega -->
+                    <aside>
+                        <h3>Paradas</h3>
+                        <div id="stops"></div>
+
+                        <p class="help">
+                            Distancias viales estimadas; no incluyen
+                            tráfico en vivo. El recorrido sigue el orden
+                            de la lista, no optimiza automáticamente.
+                        </p>
+                    </aside>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- [17] MÓDULO PEDIDOS: tabla y alta -->
+        <section id="ordersView" class="view panel">
+            <div class="section-head">
+                <h2>Pedidos</h2>
+                <button class="primary" id="newOrder2">
+                    + Pedido
+                </button>
+            </div>
+
+            <!-- Tabla generada por JavaScript -->
+            <div id="ordersTable" class="table-wrap"></div>
+        </section>
+
+        <!-- [18] MÓDULO CLIENTES -->
+        <section id="clientsView" class="view panel">
+            <div class="section-head">
+                <h2>Clientes</h2>
+                <button class="primary" id="newClient">
+                    + Cliente
+                </button>
+            </div>
+
+            <div id="clientsTable" class="table-wrap"></div>
+        </section>
+
+        <!-- [19] MÓDULO VENDEDORES -->
+        <section id="sellersView" class="view panel">
+            <div class="section-head">
+                <h2>Vendedores</h2>
+                <button class="primary" id="newSeller">
+                    + Vendedor
+                </button>
+            </div>
+
+            <div id="sellersTable" class="table-wrap"></div>
+        </section>
+
+        <!-- [20] MÓDULO PRODUCTOS -->
+        <section id="productsView" class="view panel">
+            <div class="section-head">
+                <h2>Productos</h2>
+                <button class="primary" id="newProduct">
+                    + Producto
+                </button>
+            </div>
+
+            <div id="productsTable" class="table-wrap"></div>
+        </section>
+
+    </main>
+
+    <!-- [21] DIÁLOGO DE ALTA Y EDICIÓN DE PEDIDOS -->
+    <dialog id="orderDlg">
+        <form id="orderForm">
+
+            <!-- [21.1] Encabezado para impresión o PDF -->
+            <div class="print-brand">
+                <strong>WAIPARA DISTRIBUIDORA</strong><br>
+                Comprobante de pedido
+            </div>
+
+            <div class="print-head">
+                <h2 id="orderTitle">Nuevo pedido</h2>
+                <p id="printOrderMeta"></p>
+                <p class="print-order-details" id="printOrderDetails"></p>
+            </div>
+
+            <!-- [21.2] Datos generales del pedido -->
+            <div class="form">
+
+                <label>
+                    Número de pedido
+                    <input id="oNumber" required readonly>
+                </label>
+
+                <label>
+                    Cliente
+                    <select id="oClient" required></select>
+                </label>
+
+                <label>
+                    Vendedor
+                    <select id="oSeller">
+                        <option value="">Sin asignar</option>
+                    </select>
+                </label>
+
+                <label>
+                    Fecha del pedido
+                    <input id="oDate" type="date">
+                </label>
+
+                <label>
+                    Fecha de entrega
+                    <input id="oDelivery" type="date">
+                </label>
+
+                <label>
+                    Transportista
+                    <select id="oDriver">
+                        <option value="">Sin asignar</option>
+                        <option>Daniel Aguilar</option>
+                        <option>Valentino Correa</option>
+                        <option>Otro..</option>
+                    </select>
+                </label>
+
+                <label>
+                    Tipo de pago
+                    <select id="oPayment">
+                        <option>Contado</option>
+                        <option>Cuenta Corriente</option>
+                        <option>Echeq</option>
+                        <option>Otro</option>
+                    </select>
+                </label>
+
+                <label>
+                    Estado
+                    <select id="oStatus">
+                        <option>PENDIENTE</option>
+                        <option>PROGRAMADO</option>
+                        <option>EN REPARTO</option>
+                        <option>ENTREGADO</option>
+                        <option>NO ENTREGADO</option>
+                    </select>
+                </label>
+
+                <!-- [21.3] Domicilio y ubicación geográfica -->
+                <label class="full">
+                    Dirección de entrega
+                    <input id="oAddress">
+                </label>
+
+                <label>
+                    Localidad
+                    <input id="oLocality">
+                </label>
+
+                <label>
+                    Provincia
+                    <input id="oProvince" value="Buenos Aires">
+                </label>
+
+                <label>
+                    Latitud
+                    <input id="oLat" type="number" step="any">
+                </label>
+
+                <label>
+                    Longitud
+                    <input id="oLng" type="number" step="any">
+                </label>
+
+                <!-- [21.4] Geocodificación de la dirección -->
+                <div class="full">
+                    <button type="button" id="geocodeOrder">
+                        Buscar coordenadas desde la dirección
+                    </button>
+
+                    <span id="geoMsg" class="muted"></span>
+                </div>
+
+                <!-- [21.5] Detalle de productos, cantidades y precios -->
+                <div class="full">
+
+                    <div class="section-head">
+                        <h3>Productos del pedido</h3>
+
+                        <button
+                            type="button"
+                            id="addLine"
+                            class="no-print"
+                        >
+                            + Agregar producto
+                        </button>
+                    </div>
+
+                    <div class="product-grid">
+
+                        <!-- Encabezado de las columnas del detalle -->
+                        <div class="product-head">
+                            <span>#</span>
+                            <span>Cod</span>
+                            <span>Descripción</span>
+                            <span>Precio final</span>
+                            <span>Desc [%]</span>
+                            <span>Total</span>
+                            <span></span>
+                        </div>
+
+                        <!-- Líneas de productos creadas dinámicamente -->
+                        <div id="productLines"></div>
+
+                        <!-- [21.5.1] Resumen de unidades y monto del pedido -->
+                        <div class="product-foot">
+                            <b id="unitsTotal">0 # Bultos</b>
+
+                            <b>
+                                Total
+                                <span id="orderTotal">$ 0,00</span>
+                            </b>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- [21.6] Observaciones del pedido -->
+                <label class="full">
+                    Observaciones
+                    <textarea id="oNotes" rows="2"></textarea>
+                </label>
+
+            </div>
+
+            <!-- [21.7] Acciones del pedido -->
+            <div class="actions no-print">
+
+                <button type="button" class="danger" id="deleteOrder">
+                    Eliminar
+                </button>
+
+                <button type="button" id="printOrder">
+                    Imprimir / Exportar PDF
+                </button>
+
+                <span style="flex:1"></span>
+
+                <button type="button" id="cancelOrder">
+                    Cancelar
+                </button>
+
+                <button class="primary">
+                    Guardar pedido
+                </button>
+
+            </div>
+        </form>
+    </dialog>
+
+    <!-- [22] SELECTOR DE PRODUCTOS PARA AGREGAR A UN PEDIDO -->
+    <dialog id="productPickerDlg" class="picker-dialog">
+
+        <div class="section-head">
+            <h2>Seleccionar productos</h2>
+
+            <button type="button" id="closeProductPicker">
+                Cerrar
+            </button>
+        </div>
+
+        <!-- Búsqueda por código o nombre -->
+        <input
+            id="productSearch"
+            placeholder="Buscar por código o nombre"
+            class="picker-search"
+        >
+
+        <!-- Resultados dinámicos del catálogo -->
+        <div id="productPickerList" class="picker-list"></div>
+
+        <!-- Acciones de selección -->
+        <div class="actions picker-actions">
+            <button type="button" id="selectAllProducts">
+                Seleccionar todos
+            </button>
+
+            <span style="flex:1"></span>
+
+            <button type="button" id="confirmProducts" class="primary">
+                Agregar seleccionados
+            </button>
+        </div>
+
+    </dialog>
+
+    <!-- [23] DIÁLOGO GENÉRICO PARA CLIENTES, VENDEDORES Y PRODUCTOS -->
+    <dialog id="entityDlg">
+        <form id="entityForm">
+
+            <h2 id="entityTitle">Registro</h2>
+
+            <!-- Tipo e identificador del registro en edición -->
+            <input type="hidden" id="entityType">
+            <input type="hidden" id="entityId">
+
+            <!-- Campos generados según la entidad seleccionada -->
+            <div id="entityFields" class="form"></div>
+
+            <!-- Guardar o cancelar -->
+            <div class="actions" style="margin-top:15px">
+                <button type="button" id="cancelEntity">
+                    Cancelar
+                </button>
+
+                <button class="primary">Guardar</button>
+            </div>
+
+        </form>
+    </dialog>
+
+    <!-- [24] CONTENEDOR PARA NOTIFICACIONES TEMPORALES -->
+    <div id="toast" class="toast"></div>
+
+    <!-- [25] LÓGICA PRINCIPAL DE LA APLICACIÓN -->
+    <!-- defer permite procesar el script después de analizar el HTML -->
+    <script src="/JS/app.js" defer></script>
+
+</body>
+</html>

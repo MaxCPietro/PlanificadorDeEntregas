@@ -1,0 +1,1050 @@
+
+/* ============================================================
+   PLANIFICACIÓN DE ENTREGAS
+   Hoja de estilos principal
+   Organización: V6.1
+   ============================================================ */
+
+
+/* ============================================================
+   01. VARIABLES Y CONFIGURACIÓN GENERAL
+   ============================================================ */
+
+/* Tipografía, colores base y fondo de la aplicación */
+:root {
+    font-family: Inter, system-ui, Arial, sans-serif;
+    color: #182230;
+    background: #f2f5f8;
+}
+
+/* Incluye bordes y rellenos dentro del tamaño de cada elemento */
+* {
+    box-sizing: border-box;
+}
+
+/* Elimina el margen predeterminado del navegador */
+body {
+    margin: 0;
+}
+
+
+/* ============================================================
+   02. CABECERA PRINCIPAL
+   ============================================================ */
+
+header {
+    background: #172534;
+    color: #fff;
+    padding: 17px 22px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* Título principal */
+header h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+}
+
+/* Subtítulo de la aplicación */
+header p {
+    margin: 0;
+    color: #c7d2df;
+    font-size: 12px;
+}
+
+
+/* ============================================================
+   03. CONTENEDORES, PANELES Y BARRAS
+   ============================================================ */
+
+/* Contenedor central de la aplicación */
+.wrap {
+    max-width: 1600px;
+    margin: auto;
+    padding: 16px;
+}
+
+/* Estilo común de barras, paneles y tarjetas estadísticas */
+.bar,
+.panel,
+.stat {
+    background: #fff;
+    border: 1px solid #e1e7ed;
+    border-radius: 12px;
+    padding: 13px;
+    margin-bottom: 12px;
+}
+
+/* Barra de herramientas y grupos de acciones */
+.bar,
+.actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+/* Las acciones se agrupan desde la izquierda */
+.actions {
+    justify-content: flex-start;
+}
+
+/* Encabezados de secciones */
+.section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* Oculta elementos de manera forzada */
+.hidden {
+    display: none !important;
+}
+
+
+/* ============================================================
+   04. BOTONES Y CONTROLES DE FORMULARIO
+   ============================================================ */
+
+/* Apariencia común de botones, campos y selectores */
+button,
+input,
+select,
+textarea {
+    font: inherit;
+    padding: 9px 10px;
+    border: 1px solid #cfd8e2;
+    border-radius: 7px;
+    background: white;
+    color: inherit;
+}
+
+/* Cursor de interacción para botones */
+button {
+    cursor: pointer;
+}
+
+/* Botón principal */
+button.primary {
+    background: #1769d2;
+    color: #fff;
+    border-color: #1769d2;
+}
+
+/* Botón o acción destructiva */
+button.danger {
+    color: #b42318;
+}
+
+
+/* ============================================================
+   05. INDICADORES Y TARJETAS ESTADÍSTICAS
+   ============================================================ */
+
+/* Cuadrícula de indicadores */
+.stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+
+/* Las tarjetas no agregan un margen inferior propio */
+.stat {
+    margin: 0;
+}
+
+/* Texto descriptivo de cada indicador */
+.stat span {
+    font-size: 12px;
+    color: #68778a;
+}
+
+/* Valor principal del indicador */
+.stat strong {
+    display: block;
+    font-size: 25px;
+    margin-top: 5px;
+}
+
+/* Etiquetas pequeñas */
+.badge {
+    font-size: 11px;
+    background: #e9eef5;
+    padding: 4px 6px;
+    border-radius: 5px;
+}
+
+/* Textos secundarios y ayudas */
+.muted,
+.help {
+    font-size: 12px;
+    color: #657488;
+}
+
+/* Mensaje de advertencia */
+.hint {
+    background: #fff7df;
+    border: 1px solid #f1d58a;
+    border-radius: 9px;
+    padding: 10px;
+    font-size: 12px;
+    color: #604b12;
+    margin-bottom: 12px;
+}
+
+
+/* ============================================================
+   06. NAVEGACIÓN POR PESTAÑAS Y VISTAS
+   ============================================================ */
+
+/* Barra de pestañas */
+.tabs {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+}
+
+/* Pestaña seleccionada */
+.tab.active {
+    background: #172534;
+    color: #fff;
+}
+
+/* Las vistas están ocultas por defecto */
+.view {
+    display: none;
+}
+
+/* Solo se muestra la vista activa */
+.view.active {
+    display: block;
+}
+
+
+/* ============================================================
+   07. PLANIFICADOR Y CALENDARIO DE ENTREGAS
+   ============================================================ */
+
+/* Distribución: panel lateral y calendario */
+.planner {
+    display: grid;
+    grid-template-columns: 250px minmax(0, 1fr);
+    gap: 12px;
+}
+
+/* Permite desplazamiento horizontal del calendario */
+.calendar-scroll {
+    overflow: auto;
+}
+
+/* Calendario semanal de siete columnas */
+.calendar {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(145px, 1fr));
+    gap: 7px;
+    min-width: 1080px;
+}
+
+/* Columna correspondiente a cada día */
+.day {
+    background: #f5f7fa;
+    border: 1px solid #e0e6ec;
+    border-radius: 9px;
+    padding: 7px;
+    min-height: 410px;
+}
+
+/* Cabecera de cada día */
+.day-head {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px;
+    font-weight: 700;
+}
+
+/* Área donde se pueden ubicar pedidos */
+.drop {
+    min-height: 100px;
+}
+
+/* Área resaltada durante una operación de arrastre */
+.drop.over {
+    background: #e8f2ff;
+    outline: 2px dashed #1769d2;
+}
+
+
+/* ============================================================
+   08. TARJETAS DE PEDIDOS Y ESTADOS
+   ============================================================ */
+
+/* Tarjeta individual de pedido */
+.order {
+    background: #fff;
+    border: 1px solid #e1e7ed;
+    border-left: 4px solid #1769d2;
+    border-radius: 7px;
+    padding: 9px;
+    margin: 6px 0;
+    cursor: grab;
+    font-size: 12px;
+}
+
+/* Pedido pendiente */
+.order.PENDIENTE {
+    border-left-color: #9aa6b2;
+}
+
+/* Pedido en reparto.
+   La clase EN-REPARTO debe coincidir con la que genere JavaScript. */
+.order.EN-REPARTO {
+    border-left-color: #db9700;
+}
+
+/* Pedido entregado */
+.order.ENTREGADO {
+    border-left-color: #1f9d60;
+}
+
+/* Pedido no entregado */
+.order.NO-ENTREGADO {
+    border-left-color: #d64545;
+}
+
+/* Información secundaria de la tarjeta */
+.order small {
+    display: block;
+    color: #657488;
+    margin-top: 4px;
+}
+
+
+/* ============================================================
+   09. MAPA Y PLANIFICACIÓN DE RUTAS
+   ============================================================ */
+
+/* Distribución: mapa principal y panel lateral de paradas */
+.mapgrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 310px;
+    gap: 12px;
+}
+
+/* Superficie del mapa */
+#map {
+    height: 560px;
+    border-radius: 8px;
+}
+
+/* Elemento individual de la lista de paradas */
+.stop {
+    padding: 9px 0;
+    border-bottom: 1px solid #e2e8ef;
+}
+
+/* Casilla para activar o desactivar una ruta */
+.route-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 5px;
+    font-size: 13px;
+}
+
+/* Tamaño de la casilla de selección */
+.route-check input {
+    width: 17px;
+    height: 17px;
+    padding: 0;
+}
+
+/* Título y elementos identificadores de una ruta */
+.route-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+
+/* Indicador circular del color de la ruta */
+.route-color {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    display: inline-block;
+    flex: none;
+}
+
+/* Contenedor de acciones del mapa */
+.map-actions .actions {
+    width: auto;
+}
+
+
+/* ============================================================
+   10. FORMULARIOS Y CUADROS DE DIÁLOGO
+   ============================================================ */
+
+/* Formulario en dos columnas */
+.form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 11px;
+}
+
+/* Cada etiqueta contiene su texto y su campo */
+.form label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 13px;
+}
+
+/* Elemento que ocupa ambas columnas */
+.full {
+    grid-column: 1 / -1;
+}
+
+/* Estilo general de los cuadros de diálogo */
+dialog {
+    border: 0;
+    border-radius: 14px;
+    width: min(860px, 96vw);
+    max-height: 90vh;
+    overflow: auto;
+    padding: 22px;
+    box-shadow: 0 18px 70px #0003;
+}
+
+/* Fondo oscurecido detrás del diálogo */
+dialog::backdrop {
+    background: #17253488;
+}
+
+/* Diálogo de inicio de sesión */
+.auth {
+    max-width: 430px;
+    margin: 8vh auto;
+}
+
+/* Panel de acceso oculto inicialmente */
+#loginPanel {
+    display: none;
+}
+
+
+/* ============================================================
+   11. TABLAS GENERALES
+   ============================================================ */
+
+/* Permite desplazamiento horizontal en tablas anchas */
+.table-wrap {
+    overflow: auto;
+}
+
+/* Estructura general de las tablas */
+table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13px;
+}
+
+/* Celdas de datos y encabezados */
+td,
+th {
+    text-align: left;
+    padding: 10px;
+    border-bottom: 1px solid #e4e9ef;
+    white-space: nowrap;
+}
+
+/* Encabezado de tabla */
+th {
+    background: #f6f8fa;
+}
+
+/* Tabla de clientes: admite textos largos */
+.client-table td {
+    white-space: normal;
+    min-width: 95px;
+    max-width: 260px;
+    overflow-wrap: anywhere;
+}
+
+/* La columna de acciones mantiene su formato compacto */
+.client-table td:last-child {
+    white-space: nowrap;
+    min-width: 80px;
+}
+
+
+/* ============================================================
+   12. LÍNEAS DE PRODUCTOS: FORMULARIOS GENERALES
+   ============================================================ */
+
+/* Diseño genérico de una línea de producto */
+.product-line {
+    display: grid;
+    grid-template-columns: 82px 55px minmax(180px, 1fr) 102px 62px 120px 30px;
+    gap: 0;
+    margin: 7px 0;
+    align-items: stretch;
+}
+
+/* Evita que los controles excedan el ancho de su columna */
+.product-line > span,
+.product-line > input,
+.product-line > select,
+.product-line > button {
+    min-width: 0;
+}
+
+
+/* ============================================================
+   13. COMPROBANTE: CUADRÍCULA DE PRODUCTOS
+   ============================================================ */
+
+/* Contenedor de renglones con formato de comprobante */
+.product-grid {
+    border: 1px solid #777;
+    font-size: 12px;
+    background: #fff;
+    overflow-x: auto;
+}
+
+/* Columnas compartidas entre encabezado y renglones.
+   Orden: código, cantidad, descripción, precio, descuento,
+   importe y acción. */
+.product-head,
+.product-line {
+    display: grid;
+    grid-template-columns: 82px 55px minmax(180px, 1fr) 102px 62px 120px 30px;
+    gap: 0;
+    align-items: stretch;
+}
+
+/* Encabezado de la grilla de productos */
+.product-head {
+    background: #f6f8fa;
+    font-weight: 700;
+    border-bottom: 2px solid #71863e;
+}
+
+/* Bordes y dimensiones comunes de cada celda */
+.product-head span,
+.product-line > span,
+.product-line > input,
+.product-line > select,
+.product-line > button {
+    min-width: 0;
+    padding: 5px 4px;
+    border: 0;
+    border-right: 1px solid #888;
+    border-bottom: 1px solid #888;
+    border-radius: 0;
+}
+
+/* Campos de edición dentro del comprobante */
+.product-line > input,
+.product-line > select {
+    width: 100%;
+    font-size: 12px;
+}
+
+/* Descripción del producto en una sola línea */
+.product-line .line-desc {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Importe de cada renglón */
+.product-line .line-total {
+    text-align: right;
+    background: #edf4d7;
+}
+
+/* Alineación de la cantidad */
+.product-line .line-qty {
+    text-align: right;
+}
+
+/* Pie del comprobante */
+.product-foot {
+    display: flex;
+    justify-content: space-between;
+    padding: 7px 8px;
+    border-top: 2px solid #5c2d91;
+    font-weight: 700;
+}
+
+/* Totales y subtotales agrupados a la derecha */
+.product-foot b:last-child {
+    display: flex;
+    gap: 16px;
+}
+
+/* Etiqueta de condición de pago */
+.payment-pill {
+    display: inline-block;
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: #eef2ff;
+}
+
+
+/* ============================================================
+   14. NOTIFICACIONES EMERGENTES
+   ============================================================ */
+
+/* Mensaje temporal de confirmación o error */
+.toast {
+    display: none;
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    background: #172534;
+    color: #fff;
+    padding: 13px 16px;
+    border-radius: 8px;
+    z-index: 9999;
+    max-width: 90vw;
+}
+
+/* Clase que hace visible la notificación */
+.toast.show {
+    display: block;
+}
+
+
+/* ============================================================
+   15. ESTADO DE CONEXIÓN
+   ============================================================ */
+
+/* Indicador de conexión con icono circular */
+.conn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #d1fae5;
+    color: #065f46;
+    border: 1px solid #6ee7b7;
+    border-radius: 999px;
+    padding: 7px 11px;
+    font-weight: 700;
+    font-size: 12px;
+    max-width: 48vw;
+    overflow-wrap: anywhere;
+}
+
+/* Indicador visual de conexión */
+.conn:before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #059669;
+    display: inline-block;
+    flex: none;
+}
+
+/* Estados de error o falta de conexión */
+#connection[data-state="error"],
+#connection[data-state="offline"] {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5;
+}
+
+/* El indicador circular también cambia a rojo */
+#connection[data-state="error"]:before,
+#connection[data-state="offline"]:before {
+    background: #dc2626;
+}
+
+
+/* ============================================================
+   16. SELECTOR DE CLIENTES, PEDIDOS U OTROS ELEMENTOS
+   ============================================================ */
+
+/* Cuadro de diálogo del selector */
+.picker-dialog {
+    width: min(680px, 96vw);
+}
+
+/* Campo de búsqueda del selector */
+.picker-search {
+    width: 100%;
+    margin: 8px 0 12px;
+}
+
+/* Lista desplazable de opciones */
+.picker-list {
+    max-height: 55vh;
+    overflow: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+}
+
+/* Tarjeta individual seleccionable */
+.picker-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 10px;
+    border: 1px solid #dbe3eb;
+    border-radius: 8px;
+    background: #fff;
+}
+
+/* Separación de la casilla respecto del texto */
+.picker-item input {
+    margin-top: 3px;
+}
+
+/* Texto secundario de cada opción */
+.picker-item small {
+    display: block;
+    color: #657488;
+}
+
+/* Acciones al pie del selector */
+.picker-actions {
+    margin-top: 14px;
+}
+
+
+/* ============================================================
+   17. IMPRESIÓN DEL PEDIDO
+   ============================================================ */
+
+/* Elementos visibles únicamente en la impresión */
+.print-head,
+.print-brand {
+    display: none;
+}
+
+/* Separación entre los datos del pedido y sus productos */
+.print-order-details {
+    margin-bottom: 12px;
+}
+
+/* Color y fondo del diálogo del pedido */
+#orderDlg {
+    background: #fff;
+}
+
+/* Color base del formulario del pedido */
+#orderForm {
+    color: #182230;
+}
+
+/* Título del comprobante */
+#orderForm .print-head h2 {
+    font-size: 25px;
+    margin-bottom: 4px;
+}
+
+/* Subtítulo del comprobante */
+#orderForm .print-head p {
+    color: #475569;
+    margin: 0 0 15px;
+}
+
+
+/* ============================================================
+   18. ADAPTACIÓN A PANTALLAS MEDIANAS
+   Hasta 900 px
+   ============================================================ */
+
+@media (max-width: 900px) {
+
+    /* Panel lateral y mapa pasan a una sola columna */
+    .planner,
+    .mapgrid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Indicadores en dos columnas */
+    .stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* Reduce la altura del mapa */
+    #map {
+        height: 400px;
+    }
+
+    /* Conserva un ancho mínimo legible del calendario */
+    .calendar {
+        min-width: 980px;
+    }
+}
+
+
+/* ============================================================
+   19. ADAPTACIÓN A PANTALLAS PEQUEÑAS
+   Hasta 800 px
+   ============================================================ */
+
+@media (max-width: 800px) {
+
+    /* Mantiene las columnas del comprobante y habilita scroll */
+    .product-grid {
+        overflow-x: auto;
+    }
+
+    .product-head,
+    .product-line {
+        min-width: 760px;
+    }
+}
+
+
+/* ============================================================
+   20. ADAPTACIÓN A MÓVILES
+   Hasta 650 px
+   ============================================================ */
+
+@media (max-width: 650px) {
+
+    /* El selector muestra una opción por fila */
+    .picker-list {
+        grid-template-columns: 1fr;
+    }
+
+    /* El indicador de conexión puede ocupar casi todo el ancho */
+    .conn {
+        max-width: 90vw;
+    }
+
+    /* Las acciones del mapa ocupan todo el ancho disponible */
+    .map-actions .actions {
+        width: 100%;
+    }
+}
+
+
+/* ============================================================
+   21. ADAPTACIÓN A MÓVILES ESTRECHOS
+   Hasta 560 px
+   ============================================================ */
+
+@media (max-width: 560px) {
+
+    /* Formularios de una sola columna */
+    .form {
+        grid-template-columns: 1fr;
+    }
+
+    /* Los campos ya no necesitan abarcar dos columnas */
+    .full {
+        grid-column: auto;
+    }
+
+    /* Reduce el ancho de las columnas de productos */
+    .product-line {
+        grid-template-columns: 1fr 70px 90px auto;
+    }
+}
+
+
+/* ============================================================
+   22. IMPRESIÓN: CONFIGURACIÓN GENERAL
+   ============================================================ */
+
+@media print {
+
+    /* Fondo blanco y texto negro */
+    body {
+        background: #fff;
+        color: #000;
+    }
+
+    /* Oculta todo excepto el diálogo del pedido */
+    body > *:not(#orderDlg) {
+        display: none !important;
+    }
+
+    /* Convierte el diálogo en contenido normal imprimible */
+    #orderDlg {
+        display: block !important;
+        position: static;
+        border: 0;
+        box-shadow: none;
+        width: 100%;
+        max-width: none;
+        max-height: none;
+        overflow: visible;
+        padding: 0;
+    }
+
+    /* Elimina el fondo oscurecido del diálogo */
+    #orderDlg::backdrop {
+        display: none;
+    }
+
+    /* Oculta el título de edición en el comprobante */
+    #orderForm > h2 {
+        display: none;
+    }
+
+    /* Oculta acciones que no deben aparecer en papel */
+    .no-print,
+    #deleteOrder,
+    #cancelOrder,
+    #addLine,
+    #orderForm .actions button {
+        display: none !important;
+    }
+
+    /* Los datos generales se imprimen en bloque */
+    #orderForm .form {
+        display: block;
+    }
+
+    /* Distribuye los campos generales en dos columnas */
+    .form label {
+        display: inline-block;
+        width: 48%;
+        margin: 3px 0;
+    }
+
+    /* Ajusta las columnas del comprobante para imprimir */
+    .product-head,
+    .product-line {
+        grid-template-columns: 70px 55px minmax(150px, 1fr) 95px 55px 105px 0;
+    }
+
+    /* Oculta los controles de acción */
+    .product-line > button,
+    .product-head span:last-child {
+        display: none;
+    }
+
+    /* Los controles se imprimen sin apariencia de formulario */
+    .product-line > input,
+    .product-line > select {
+        appearance: none;
+        background: transparent;
+        color: #000;
+    }
+
+    /* Conserva legible el texto de las opciones de productos */
+    .product-line .line-product {
+        font-size: 0;
+    }
+
+    .product-line .line-product option {
+        font-size: 12px;
+    }
+
+    /* Evita separar una grilla de productos entre páginas */
+    .product-grid {
+        break-inside: avoid;
+    }
+
+    /* Resalta el total del pedido */
+    #orderTotal {
+        font-weight: 700;
+    }
+}
+
+
+/* ============================================================
+   23. IMPRESIÓN: PAPEL A4 Y PRESENTACIÓN FINAL
+   ============================================================ */
+
+@media print {
+
+    /* Papel A4 con márgenes de 12 mm */
+    @page {
+        size: A4;
+        margin: 12mm;
+    }
+
+    /* Tipografía de impresión */
+    body {
+        font-family: Arial, sans-serif;
+    }
+
+    /* El diálogo no debe tener esquinas redondeadas */
+    #orderDlg {
+        border-radius: 0 !important;
+    }
+
+    /* Tamaño de texto del comprobante */
+    #orderForm {
+        font-size: 11px;
+    }
+
+    /* Encabezado de marca para impresión */
+    .print-brand {
+        display: block !important;
+        font-size: 12px;
+        color: #334155;
+        border-bottom: 2px solid #1769d2;
+        padding-bottom: 8px;
+        margin-bottom: 12px;
+    }
+
+    /* Título impreso */
+    .print-head h2 {
+        font-size: 23px !important;
+        color: #172534;
+    }
+
+    /* Datos generales del pedido */
+    .print-order-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        background: #f8fafc;
+        padding: 10px;
+        border: 1px solid #dbe3eb;
+        border-radius: 6px;
+    }
+
+    /* Fondo claro del encabezado de productos */
+    .product-head {
+        background: #eef2f7 !important;
+    }
+
+    /* Altura mínima de las celdas impresas */
+    .product-line > span,
+    .product-line > input,
+    .product-line > select {
+        min-height: 25px;
+    }
+
+    /* Pie de totales */
+    .product-foot {
+        background: #f8fafc;
+        border: 1px solid #dbe3eb;
+    }
+
+    /* Destaca el importe final */
+    .product-foot b:last-child {
+        font-size: 13px;
+    }
+
+    /* Oculta cualquier elemento marcado como no imprimible */
+    .no-print {
+        display: none !important;
+    }
+}
+
+
+/* ============================================================
+   FIN DE LA HOJA DE ESTILOS
+   ============================================================ */
