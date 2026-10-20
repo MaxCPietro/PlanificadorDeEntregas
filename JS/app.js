@@ -1821,8 +1821,8 @@ $('#deleteOrder').onclick = async () => {
 
 const DEPOT = {
     name: 'Depósito Pilar · Sgto. Juan Bautista Cabral 1155, La Lonja',
-    lat: -34.4492,
-    lng: -58.9153
+    lat: -34.441901,
+    lng: -58.862627
 };
 
 const ROUTE_COLORS = [
