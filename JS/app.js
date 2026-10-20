@@ -1648,7 +1648,7 @@ function printProfessionalOrder() {
             }).from(win.document.body).save();
         } catch (error) {
             console.error('Error generando PDF:', error);
-            win.alert('No se pudo descargar el PDF. Usá Imprimir como alternativa.');
+            win.alert('No se pudo generar el PDF: ' + (error?.message || String(error)) + '\nPodés usar Imprimir como alternativa.');
         } finally {
             toolbar.style.display = 'flex';
             downloadButton.disabled = false;
@@ -1658,8 +1658,10 @@ function printProfessionalOrder() {
     win.focus();
     // Generar y descargar el PDF automáticamente, sin abrir el diálogo de impresión.
     // Se conserva el botón Imprimir para quien necesite una copia en papel.
-    downloadButton.click();
+    // La descarga debe iniciarse con un clic real del usuario para evitar bloqueos del navegador.
+    // No disparar click() automáticamente desde una ventana nueva.
 }
+
 
 $('#printOrder').onclick = printProfessionalOrder;
 $('#addLine').onclick = openProductPicker;
