@@ -116,6 +116,28 @@ function money(v) {
 }
 
 
+/** Precio en pesos argentinos para inputs de texto. */
+function formatPrice(value) {
+    return '$ ' + new Intl.NumberFormat('es-AR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(Number(value) || 0);
+}
+
+/** Interpreta valores como "$ 13.200,50", "13200,50" o "13200.50". */
+function parsePrice(value) {
+    let s = String(value ?? '').replace(/[$\s]/g, '').trim();
+    if (!s) return 0;
+    if (s.includes(',')) {
+        s = s.replace(/\./g, '').replace(',', '.');
+    } else if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+        s = s.replace(/\./g, '');
+    }
+    const n = Number(s);
+    return Number.isFinite(n) ? n : 0;
+}
+
+
 /**
  * Convierte un valor a texto con punto decimal.
  * Sirve para cargar coordenadas en inputs type="number",
@@ -959,10 +981,9 @@ function addProductLine(p = {}) {
 
         <input
             class="line-price"
-            type="number"
-            min="0"
-            step="0.01"
-            value="${p.precio_unitario ?? ''}"
+            type="text"
+            inputmode="decimal"
+            value="${p.precio_unitario == null ? '' : formatPrice(p.precio_unitario)}"
             required
             title="Precio final unitario"
         >
@@ -997,7 +1018,7 @@ function addProductLine(p = {}) {
 
         if (product && row.querySelector('.line-price').value === '') {
             row.querySelector('.line-price').value =
-                product.precio || 0;
+                formatPrice(product.precio || 0);
         }
 
         calcTotal();
@@ -1007,6 +1028,16 @@ function addProductLine(p = {}) {
 
     row.querySelectorAll('input').forEach(x => {
         x.oninput = calcTotal;
+    });
+
+    const priceInput = row.querySelector('.line-price');
+    priceInput.addEventListener('focus', () => {
+        priceInput.value = String(parsePrice(priceInput.value)).replace('.', ',');
+        priceInput.select();
+    });
+    priceInput.addEventListener('blur', () => {
+        priceInput.value = formatPrice(parsePrice(priceInput.value));
+        calcTotal();
     });
 
     row.querySelector('button').onclick = () => {
@@ -1024,7 +1055,7 @@ function calcTotal() {
 
     document.querySelectorAll('.product-line').forEach(r => {
         const q = +r.querySelector('.line-qty').value || 0;
-        const price = +r.querySelector('.line-price').value || 0;
+        const price = parsePrice(r.querySelector('.line-price').value);
 
         const disc = Math.min(
             100,
@@ -1326,7 +1357,159 @@ $('#oDelivery').onchange = () => {
 };
 
 
-$('#printOrder').onclick = () => window.print();
+/**
+ * Comprobante comercial A4 en ventana independiente.
+ * El título se usa como nombre sugerido por la mayoría de navegadores
+ * al seleccionar «Guardar como PDF» (no puede imponerse desde JavaScript).
+ */
+function printProfessionalOrder() {
+    const get = selector => $(selector)?.value?.trim() || '';
+    const client = cache.clientes.find(c => String(c.id) === get('#oClient')) || {};
+    const numero = get('#oNumber') || 'SinNumero';
+    const cliente = client.nombre || 'SinCliente';
+    const safePart = value => String(value).normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9_-]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'SinDato';
+    const fileName = `Pedido${safePart(numero)}-${safePart(cliente)}`;
+    const dateAR = value => {
+        if (!value) return 'Sin programar';
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+    };
+    const detail = (label, value) => `
+        <div class="detail"><div class="label">${esc(label)}</div>
+        <div class="value">${esc(value || '—')}</div></div>`;
+    const deliveryAddress = [get('#oAddress'), get('#oLocality'), get('#oProvince')]
+        .filter(Boolean).join(', ');
+    // La dirección comercial/fiscal del cliente NO se reemplaza por la de entrega.
+    const billingAddress = [client.direccion, client.localidad, client.provincia,
+        client.codigo_postal].filter(Boolean).join(', ');
+    const lines = [...document.querySelectorAll('#productLines .product-line')].map(row => {
+        const productId = row.querySelector('.line-product')?.value;
+        const product = cache.productos.find(p => String(p.id) === String(productId));
+        const cantidad = Number(row.querySelector('.line-qty')?.value) || 0;
+        const precio = parsePrice(row.querySelector('.line-price')?.value);
+        const descuento = Math.max(0, Math.min(100,
+            Number(row.querySelector('.line-discount')?.value) || 0));
+        return { descripcion: product?.nombre || row.querySelector('.line-desc')?.textContent || '—',
+            cantidad, precio, descuento,
+            total: cantidad * precio * (1 - descuento / 100) };
+    });
+    if (!client.id || !lines.length) {
+        toast('Seleccioná un cliente y al menos un producto para imprimir');
+        return;
+    }
+    const total = lines.reduce((sum, line) => sum + line.total, 0);
+    const qty = lines.reduce((sum, line) => sum + line.cantidad, 0);
+    const quantity = n => n.toLocaleString('es-AR', {maximumFractionDigits: 3});
+    const rows = lines.map((line, i) => `<tr>
+        <td class="center">${i + 1}</td>
+        <td class="description">${esc(line.descripcion)}</td>
+        <td class="right">${quantity(line.cantidad)}</td>
+        <td class="right">${money(line.precio)}</td>
+        <td class="right">${quantity(line.descuento)} %</td>
+        <td class="right strong">${money(line.total)}</td>
+    </tr>`).join('');
+    const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
+    <title>${esc(fileName)}</title><style>
+    @page { size:A4; margin:13mm 14mm 15mm; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:#172534; background:#fff;
+        font-family:Arial,Helvetica,sans-serif; font-size:10px; line-height:1.45; }
+    .header { display:flex; align-items:flex-start; justify-content:space-between;
+        gap:20px; padding:0 0 17px; border-bottom:3px solid #ed7900; }
+    .brand { color:#ed7900; font-size:22px; font-weight:900; letter-spacing:.5px; }
+    .brand-sub { color:#526173; font-size:10px; letter-spacing:1.3px; }
+    .document-title { text-align:right; }
+    .document-title h1 { margin:0; font-size:21px; color:#172534; }
+    .document-title .number { color:#ed7900; font-size:14px; font-weight:800; margin-top:3px; }
+    .document-title .date { color:#526173; margin-top:3px; }
+    .section-title { margin:18px 0 8px; font-size:10px; color:#ed7900;
+        font-weight:800; text-transform:uppercase; letter-spacing:1.1px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 18px; }
+    .detail { min-width:0; }
+    .label { color:#64748b; font-size:9px; text-transform:uppercase; letter-spacing:.5px; }
+    .value { font-weight:650; font-size:11px; overflow-wrap:anywhere; white-space:pre-wrap; }
+    .address-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .address-card { border:1px solid #dce4ed; background:#f8fafc;
+        padding:11px 12px; border-radius:6px; min-width:0; }
+    .address-card .value { font-weight:500; margin-top:5px; }
+    table { width:100%; border-collapse:collapse; table-layout:fixed; }
+    thead { display:table-header-group; }
+    th { padding:9px 6px; background:#172534; color:white; font-size:9px; text-align:left; }
+    td { padding:9px 6px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+    tbody tr:nth-child(even) { background:#f8fafc; }
+    tr { break-inside:avoid; page-break-inside:avoid; }
+    .description { overflow-wrap:anywhere; white-space:normal; }
+    .right { text-align:right; white-space:nowrap; }
+    .center { text-align:center; }
+    .strong { font-weight:700; }
+    .summary { margin-top:15px; display:flex; justify-content:flex-end; }
+    .summary-box { width:265px; max-width:100%; border-top:2px solid #ed7900; padding-top:10px; }
+    .summary-line { display:flex; justify-content:space-between; gap:15px; padding:5px 0; }
+    .grand-total { border-top:1px solid #dce4ed; margin-top:5px; padding-top:10px;
+        font-size:15px; font-weight:800; }
+    .notes { margin-top:20px; border-top:1px solid #dce4ed; padding-top:12px;
+        white-space:pre-wrap; overflow-wrap:anywhere; }
+    .footer { margin-top:25px; border-top:1px solid #dce4ed; padding-top:8px;
+        font-size:9px; color:#64748b; display:flex; justify-content:space-between; }
+    @media screen { body { max-width:210mm; margin:25px auto; padding:14mm;
+        box-shadow:0 4px 25px #0002; } }
+    @media print { body { padding:0; box-shadow:none; }
+        * { print-color-adjust:exact; -webkit-print-color-adjust:exact; } }
+    </style></head><body>
+    <header class="header"><div><div class="brand">WAIPARA</div>
+        <div class="brand-sub">DISTRIBUIDORA</div></div>
+        <div class="document-title"><h1>COMPROBANTE DE PEDIDO</h1>
+        <div class="number">PEDIDO N.º ${esc(numero)}</div>
+        <div class="date">Fecha: ${esc(dateAR(get('#oDate')))}</div></div></header>
+    <div class="section-title">Información del pedido</div>
+    <div class="grid">
+        ${detail('Cliente', cliente)}
+        ${detail('Código de cliente', client.codigo)}
+        ${detail('Vendedor', nameOf('vendedores', get('#oSeller')))}
+        ${detail('Transportista', get('#oDriver') || 'Sin asignar')}
+        ${detail('Fecha de entrega', dateAR(get('#oDelivery')))}
+        ${detail('Condición de pago', get('#oPayment'))}
+        ${detail('Estado', get('#oStatus'))}
+        ${detail('Contacto', client.contacto || client.telefono)}
+    </div>
+    <div class="section-title">Direcciones</div>
+    <div class="address-grid">
+        <div class="address-card">${detail('Dirección de facturación', billingAddress || 'No informada en la ficha del cliente')}</div>
+        <div class="address-card">${detail('Dirección de entrega', deliveryAddress || 'No informada')}</div>
+    </div>
+    <div class="section-title">Detalle de productos</div>
+    <table><colgroup><col style="width:5%"><col style="width:43%">
+        <col style="width:10%"><col style="width:15%"><col style="width:10%">
+        <col style="width:17%"></colgroup>
+        <thead><tr><th>#</th><th>Descripción</th><th class="right">Bultos</th>
+        <th class="right">Precio</th><th class="right">Desc.</th>
+        <th class="right">Importe</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+    <div class="summary"><div class="summary-box">
+        <div class="summary-line"><span>Total de bultos</span><b>${quantity(qty)}</b></div>
+        <div class="summary-line grand-total"><span>TOTAL</span><span>${money(total)}</span></div>
+    </div></div>
+    ${get('#oNotes') ? `<div class="notes"><b>OBSERVACIONES</b><div>${esc(get('#oNotes'))}</div></div>` : ''}
+    <footer class="footer"><span>WAIPARA DISTRIBUIDORA</span>
+        <span>Comprobante de pedido · N.º ${esc(numero)}</span></footer>
+    </body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) {
+        toast('Habilitá las ventanas emergentes para imprimir el pedido');
+        return;
+    }
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    // El diálogo permite elegir «Guardar como PDF».
+    win.setTimeout(() => win.print(), 450);
+}
+
+$('#printOrder').onclick = printProfessionalOrder;
 $('#addLine').onclick = openProductPicker;
 $('#newOrder').onclick = newOrder;
 $('#newOrder2').onclick = newOrder;
@@ -1418,7 +1601,7 @@ $('#orderForm').onsubmit = async e => {
     ].map(r => ({
         producto_id: r.querySelector('.line-product').value,
         cantidad: +r.querySelector('.line-qty').value,
-        precio_unitario: +r.querySelector('.line-price').value,
+        precio_unitario: parsePrice(r.querySelector('.line-price').value),
 
         descuento_pct: Math.min(
             100,
