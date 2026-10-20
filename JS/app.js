@@ -429,12 +429,29 @@ function render() {
    [06] CALENDARIO Y PROGRAMACIÓN DE ENTREGAS
    ============================================================ */
 
+
+const uiCalendarOrder=new Map(),uiTableSort=new Map();
+function orderedCards(items,date){const order=uiCalendarOrder.get(date??'backlog')||[];return [...items].sort((a,b)=>{const ia=order.indexOf(String(a.id)),ib=order.indexOf(String(b.id));return (ia<0?Infinity:ia)-(ib<0?Infinity:ib);});}
+function rememberCardOrder(zone,date){uiCalendarOrder.set(date??'backlog',[...zone.querySelectorAll(':scope > .order')].map(n=>n.dataset.orderId));}
+function enableTableSorting(id){
+ const table=document.getElementById(id)?.querySelector('table');if(!table)return;
+ const headers=[...table.querySelectorAll('thead th')];
+ const compare=(x,y)=>{
+  const parse=s=>{s=s.trim();if(/^\\d{4}-\\d{2}-\\d{2}/.test(s))return Date.parse(s);if(/^\\d{1,2}\\/\\d{1,2}\\/\\d{4}/.test(s)){const m=s.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})/);return Date.parse(m[3]+'-'+m[2]+'-'+m[1]);}if(/^[\\s$€\\d.,-]+$/.test(s)&&/\\d/.test(s))return Number(s.replace(/[^\\d,.-]/g,'').replace(/\\./g,'').replace(',','.'));return null;};
+  const a=parse(x),b=parse(y);return a!==null&&b!==null&&Number.isFinite(a)&&Number.isFinite(b)?a-b:x.localeCompare(y,'es',{numeric:true,sensitivity:'base'});
+ };
+ const apply=()=>{const s=uiTableSort.get(id);if(!s)return;const body=table.tBodies[0];[...body.rows].sort((a,b)=>s.direction*compare(a.cells[s.column]?.textContent||'',b.cells[s.column]?.textContent||'')).forEach(row=>body.append(row));headers.forEach((th,i)=>{const btn=th.querySelector('.ui-sort-btn');if(btn)btn.textContent=btn.dataset.label+(i===s.column?(s.direction===1?' ▲':' ▼'):' ↕');th.setAttribute('aria-sort',i===s.column?(s.direction===1?'ascending':'descending'):'none');});};
+ headers.slice(0,-1).forEach((th,i)=>{const label=th.textContent.trim();th.textContent='';const btn=document.createElement('button');btn.type='button';btn.className='ui-sort-btn';btn.dataset.label=label;btn.textContent=label+' ↕';btn.onclick=()=>{const old=uiTableSort.get(id);uiTableSort.set(id,{column:i,direction:old?.column===i?-old.direction:1});apply();};th.append(btn);});
+ apply();
+}
+
 function orderCard(p) {
     const c = cache.clientes.find(x => x.id === p.cliente_id) || {};
 
     const e = document.createElement('article');
     e.className = 'order ' + p.estado.replaceAll(' ', '-');
     e.draggable = true;
+    e.dataset.orderId=String(p.id);
     e.setAttribute('aria-label', `Pedido ${p.numero}, arrastrar para cambiar fecha`);
 
     e.innerHTML = `
@@ -489,7 +506,17 @@ function dropZone(el, date) {
         const id = e.dataTransfer.getData('text/plain');
         const p = cache.pedidos.find(x => x.id === id);
 
-        if (!p || (p.fecha_entrega || null) === date) return;
+        if (!p) return;
+        if ((p.fecha_entrega || null) === date) {
+            const target=e.target.closest('.order');
+            const card=[...el.querySelectorAll(':scope > .order')].find(n=>n.dataset.orderId===String(id));
+            if(card && target && target!==card && el.contains(target)) {
+                const rect=target.getBoundingClientRect();
+                el.insertBefore(card,e.clientY<rect.top+rect.height/2?target:target.nextSibling);
+                rememberCardOrder(el,date);
+            } else if(card && !target) {el.append(card);rememberCardOrder(el,date);}
+            return;
+        }
         el.classList.add('saving');
         const { error } = await sb
             .from('pedidos')
@@ -530,7 +557,7 @@ function renderCalendar() {
 
     $('#backlogCount').textContent = `(${un.length})`;
 
-    un.forEach(p => back.append(orderCard(p)));
+    orderedCards(un,null).forEach(p => back.append(orderCard(p)));
     dropZone(back, null);
 
     const cal = $('#calendar');
@@ -559,15 +586,20 @@ function renderCalendar() {
         col.innerHTML = `
             <div class="day-head">
                 <span>${days[i]}</span>
-                <span>${d.getDate()}/${d.getMonth() + 1}</span>
+                <span>${d.getDate()}/${d.getMonth() + 1}</span><button type="button" class="ui-day-sort">Ordenar</button>
             </div>
             <div class="drop"></div>
         `;
 
         const z = col.querySelector('.drop');
 
-        a.filter(p => p.fecha_entrega === iso(d))
+        orderedCards(a.filter(p => p.fecha_entrega === iso(d)),iso(d))
             .forEach(p => z.append(orderCard(p)));
+        col.querySelector('.ui-day-sort').onclick=()=>{
+            const cards=[...z.querySelectorAll(':scope > .order')];
+            cards.sort((x,y)=>Number(x.querySelector('b').textContent.replace(/[^0-9]/g,''))-Number(y.querySelector('b').textContent.replace(/[^0-9]/g,'')));
+            cards.forEach(card=>z.append(card));rememberCardOrder(z,iso(d));
+        };
 
         dropZone(z, iso(d));
         cal.append(col);
@@ -619,6 +651,7 @@ function renderOrders() {
         </table>
     `;
 
+    enableTableSorting('ordersTable');
     $('#ordersTable')
         .querySelectorAll('[data-edit-order]')
         .forEach(b => {
@@ -685,6 +718,7 @@ function renderClients() {
         </table>
     `;
 
+    enableTableSorting('clientsTable');
     wireEntityButtons();
 }
 
@@ -721,6 +755,7 @@ function renderSellers() {
         </table>
     `;
 
+    enableTableSorting('sellersTable');
     wireEntityButtons();
 }
 
@@ -753,6 +788,7 @@ function renderProducts() {
         </table>
     `;
 
+    enableTableSorting('productsTable');
     wireEntityButtons();
 }
 
