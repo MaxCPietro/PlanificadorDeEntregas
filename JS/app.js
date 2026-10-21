@@ -752,6 +752,13 @@ function renderClients() {
         ['updated_at', 'Actualizado']
     ];
 
+    const search = ($('#clientSearch')?.value || '').trim().toLocaleLowerCase('es-AR');
+    const filteredClients = cache.clientes.filter(c =>
+        !search || Object.values(c).some(value =>
+            value != null && String(value).toLocaleLowerCase('es-AR').includes(search)
+        )
+    );
+
     $('#clientsTable').innerHTML = `
         <table class="client-table">
             <thead>
@@ -761,7 +768,7 @@ function renderClients() {
                 </tr>
             </thead>
             <tbody>
-                ${cache.clientes.map(c => `
+                ${filteredClients.map(c => `
                     <tr>
                         ${cols.map(([k]) => `
                             <td>${
@@ -784,6 +791,12 @@ function renderClients() {
             </tbody>
         </table>
     `;
+
+    const searchInput = $('#clientSearch');
+    if (searchInput && !searchInput.dataset.filterBound) {
+        searchInput.addEventListener('input', () => renderClients());
+        searchInput.dataset.filterBound = 'true';
+    }
 
     enableTableSorting('clientsTable');
     wireEntityButtons();
