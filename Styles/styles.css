@@ -1128,3 +1128,10 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
     .stats .stat span { font-size: 18px; font-weight: 400; }
     .stats .stat strong { font-size: 18px; }
 }
+
+/* Calendario: días no laborables diferenciados visualmente. */
+.calendar .day.day-weekend { background: #e9f1fb; border-color: #c5d9f0; }
+.calendar .day.day-holiday { background: #fff0e7; border-color: #f0c7ad; }
+.calendar .day.day-weekend .day-head { color: #255a89; }
+.calendar .day.day-holiday .day-head { color: #a34b21; }
+.calendar .day-head { gap: 4px; flex-wrap: wrap; }
