@@ -1146,3 +1146,8 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 .product-line .line-product-cell { display:flex; align-items:center; min-width:0; border-right:1px solid #888; border-bottom:1px solid #888; padding:2px 4px; gap:5px; }
 .product-line .line-product-cell select { min-width:0; width:42%; max-width:150px; font-size:12px; }
 .product-line .line-product-cell .line-desc { flex:1; min-width:0; }
+
+/* Mayor espacio para seleccionar el producto en cada renglón */
+#orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 82px minmax(340px, 1fr) 102px 78px 120px 30px; min-width: 780px; }
+#orderDlg .product-line .line-product-cell select { width: 100%; max-width: none; flex: 1 1 65%; }
+#orderDlg .product-line .line-product-cell .line-desc { flex: 1 1 35%; }
