@@ -1,10 +1,22 @@
-Cambios Menores
-Base de datos de clientes
-Que cargue el vendedor automáticamente
-Cargar los precios y que los traiga automáticamente.
+Version 6 (Cambios Menores)
+* Base de datos de clientes
+* Que cargue el vendedor automáticamente
+* Cargar los precios y que los traiga automáticamente.
+* Optimizar la parte de los repartos
 
-Cambios Mayores
-Migrar a Base de datos de DonWeb
-Integración con ARCA
-Control de Stock
-Modulo de Seguridad
+Version 7
+* Migrar a Base de datos de DonWeb
+* Publicar la app en DonWeb
+
+Version 8
+* Control de Stock
+
+Version 9
+* Gestion de Venta Minorista
+
+Version 9
+* Modulo de Seguridad
+
+Version 10
+* Integracion con Arca
+
