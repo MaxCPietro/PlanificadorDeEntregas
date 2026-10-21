@@ -512,7 +512,7 @@ th {
 /* Diseño genérico de una línea de producto */
 .product-line {
     display: grid;
-    grid-template-columns: 82px minmax(220px, 1fr) 102px 62px 120px 30px;
+    grid-template-columns: 82px 55px minmax(180px, 1fr) 102px 62px 120px 30px;
     gap: 0;
     margin: 7px 0;
     align-items: stretch;
@@ -1135,44 +1135,3 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 .calendar .day.day-weekend .day-head { color: #255a89; }
 .calendar .day.day-holiday .day-head { color: #a34b21; }
 .calendar .day-head { gap: 4px; flex-wrap: wrap; }
-
-/* Pedido: campos bloqueados y estado consistente con Calendario */
-#orderDlg input:read-only:not([type="date"]), #orderDlg input:disabled { background:#ffdfbc; color:#75431d; opacity:1; }
-#orderDlg #oStatus { font-weight:700; border-radius:6px; }
-#orderDlg #oStatus.status-PENDIENTE { background:#e5e7eb;color:#374151; }
-#orderDlg #oStatus.status-PROGRAMADO { background:#1769d2;color:#fff; }
-#orderDlg #oStatus.status-EN-REPARTO { background:#f5c542;color:#332500; }
-#orderDlg #oStatus.status-ENTREGADO { background:#1f9d60;color:#fff; }
-.product-line .line-product-cell { display:flex; align-items:center; min-width:0; border-right:1px solid #888; border-bottom:1px solid #888; padding:2px 4px; gap:5px; }
-.product-line .line-product-cell select { min-width:0; width:42%; max-width:150px; font-size:12px; }
-.product-line .line-product-cell .line-desc { flex:1; min-width:0; }
-
-/* Mayor espacio para seleccionar el producto en cada renglón */
-#orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 82px minmax(340px, 1fr) 102px 78px 120px 30px; min-width: 780px; }
-#orderDlg .product-line .line-product-cell select { width: 100%; max-width: none; flex: 1 1 65%; }
-#orderDlg .product-line .line-product-cell .line-desc { flex: 1 1 35%; }
-
-/* Detalle de pedido: descripción prioritaria y controles compactos */
-#orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 52px minmax(450px,1fr) 88px 68px 100px 28px; min-width: 790px; }
-#orderDlg .product-line .line-product-cell { gap:8px; }
-#orderDlg .product-line .line-product-cell select { flex:0 0 135px; width:135px; max-width:135px; }
-#orderDlg .product-line .line-product-cell .line-desc { flex:1 1 auto; white-space:normal; overflow:visible; overflow-wrap:anywhere; line-height:1.35; }
-#orderDlg .product-line > button.danger { justify-self:center; align-self:center; width:19px; height:19px; min-width:19px; padding:0; border:0; border-radius:50%; background:#dc2626; color:white; font-size:13px; line-height:19px; display:grid; place-items:center; cursor:pointer; }
-#orderDlg #oStatus, #orderDlg #oStatus.status-PENDIENTE, #orderDlg #oStatus.status-PROGRAMADO, #orderDlg #oStatus.status-EN-REPARTO, #orderDlg #oStatus.status-ENTREGADO { background:#fff; color:inherit; font-weight:normal; }
-
-/* Tabla de pedido: código separado, descripción en una sola línea */
-#orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 52px 104px minmax(440px,1fr) 100px 76px 120px 28px; min-width:920px; }
-#orderDlg .product-line > select.line-product { width:100%; min-width:0; font-size:12px; }
-#orderDlg .product-line > .line-desc { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; align-self:center; }
-#orderDlg .product-line > button.danger { background:#ed7800; }
-#orderDlg .product-line > .line-total { background:#ffdfbc; }
-#orderDlg .product-foot #orderTotal { background:#ffdfbc; border-radius:4px; padding:3px 7px; }
-#orderDlg #orderForm > .actions { margin-top:10px; }
-
-/* Tabla de pedido adaptable al ancho disponible, sin scroll horizontal en escritorio */
-#orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 34px 82px minmax(0,1fr) 96px 58px 112px 24px; min-width:0; width:100%; }
-#orderDlg .product-line > .line-qty { padding-left:2px; padding-right:2px; }
-#orderDlg .product-line > .line-product { padding-left:2px; padding-right:2px; font-size:11px; }
-#orderDlg .product-line > .line-discount { padding-left:3px; padding-right:3px; }
-#orderDlg .product-line > .line-desc { min-width:0; }
-@media(max-width:760px) { #orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 30px 72px minmax(0,1fr) 83px 49px 95px 22px; } }
