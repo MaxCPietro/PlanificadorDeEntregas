@@ -982,6 +982,40 @@ function wireEntityButtons() {
    ============================================================ */
 
 // [nombreColumna, etiqueta, tipoHTML, obligatorio]
+
+/* Geocodificación validada para clientes y pedidos. */
+let nominatimQueue = Promise.resolve();
+let lastNominatimRequest = 0;
+function geocodeDeliveryAddress(street, city, province, postal = '') {
+    street = String(street || '').trim().replace(/\s+/g, ' ');
+    city = String(city || '').trim();
+    if (!street || !city) return Promise.reject(Error('Completá dirección y localidad.'));
+    const run = async () => {
+        const wait = Math.max(0, 1100 - (Date.now() - lastNominatimRequest));
+        if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+        lastNominatimRequest = Date.now();
+        const q = [street, city, province, postal, 'Argentina'].filter(Boolean).join(', ');
+        const params = new URLSearchParams({format:'jsonv2',addressdetails:'1',limit:'5',countrycodes:'ar','accept-language':'es',q});
+        const response = await fetch('https://nominatim.openstreetmap.org/search?' + params);
+        if (!response.ok) throw Error('Error del servicio de geocodificación (' + response.status + ').');
+        const results = await response.json();
+        const norm = value => String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+        const number = street.match(/\b\d+[a-z]?\b/i)?.[0];
+        const found = results.find(r => {
+            const a = r.address || {};
+            const placeMatches = [a.city,a.town,a.village,a.municipality,a.suburb,a.city_district,a.county]
+                .some(v => norm(v) === norm(city));
+            return placeMatches && (!number || norm(a.house_number) === norm(number))
+                && Number.isFinite(Number(r.lat)) && Number.isFinite(Number(r.lon));
+        });
+        if (!found) throw Error('No se encontró una coincidencia precisa de altura y localidad. Se conservaron las coordenadas anteriores.');
+        return found;
+    };
+    const pending = nominatimQueue.then(run, run);
+    nominatimQueue = pending.catch(() => {});
+    return pending;
+}
+
 const fields = {
     clientes: [
         ['codigo', 'Código', 'text'],
@@ -1072,32 +1106,18 @@ function editEntity(type, id = null) {
             const v = k =>
                 $('#entityFields [data-field="' + k + '"]');
 
-            const q = [
-                v('direccion_entrega').value ||
-                    v('direccion').value,
-                v('localidad').value,
-                v('provincia').value,
-                'Argentina'
-            ].filter(Boolean).join(', ');
-
             $('#entityGeoMsg').textContent = 'Buscando…';
-
             try {
-                const j = await fetch(
-                    'https://nominatim.openstreetmap.org/search' +
-                    '?format=jsonv2&limit=1&countrycodes=ar&q=' +
-                    encodeURIComponent(q)
-                ).then(r => r.json());
-
-                if (!j.length) {
-                    throw Error('Dirección no encontrada');
-                }
-
-                v('latitud').value = j[0].lat;
-                v('longitud').value = j[0].lon;
-                $('#entityGeoMsg').textContent = j[0].display_name;
-            } catch (e) {
-                $('#entityGeoMsg').textContent = e.message;
+                const result = await geocodeDeliveryAddress(
+                    v('direccion_entrega').value || v('direccion').value,
+                    v('localidad').value, v('provincia').value,
+                    v('codigo_postal').value
+                );
+                v('latitud').value = result.lat;
+                v('longitud').value = result.lon;
+                $('#entityGeoMsg').textContent = result.display_name;
+            } catch (error) {
+                $('#entityGeoMsg').textContent = error.message;
             }
         };
     }
@@ -1773,33 +1793,16 @@ $('#newProduct').onclick = () => editEntity('productos');
 
 
 $('#geocodeOrder').onclick = async () => {
-    const q = [
-        $('#oAddress').value,
-        $('#oLocality').value,
-        $('#oProvince').value,
-        'Argentina'
-    ].filter(Boolean).join(', ');
-
     $('#geoMsg').textContent = 'Buscando…';
-
     try {
-        const j = await fetch(
-            'https://nominatim.openstreetmap.org/search' +
-            '?format=jsonv2&limit=1&countrycodes=ar&q=' +
-            encodeURIComponent(q)
-        ).then(r => r.json());
-
-        if (!j.length) {
-            throw Error('No se encontró la dirección');
-        }
-
-        $('#oLat').value = j[0].lat;
-        $('#oLng').value = j[0].lon;
-
-        $('#geoMsg').textContent =
-            'Coordenadas encontradas; verificá el punto en el mapa';
-    } catch (e) {
-        $('#geoMsg').textContent = e.message;
+        const result = await geocodeDeliveryAddress(
+            $('#oAddress').value, $('#oLocality').value, $('#oProvince').value
+        );
+        $('#oLat').value = result.lat;
+        $('#oLng').value = result.lon;
+        $('#geoMsg').textContent = 'Coordenadas encontradas; verificá el punto en el mapa.';
+    } catch (error) {
+        $('#geoMsg').textContent = error.message;
     }
 };
 
