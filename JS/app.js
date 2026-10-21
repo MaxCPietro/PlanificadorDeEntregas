@@ -711,9 +711,13 @@ function renderCalendar() {
     }
 
     $('#week').textContent =
-        formatDate(week) +
+        String(week.getDate()).padStart(2, '0') + '/' +
+        String(week.getMonth() + 1).padStart(2, '0') + '/' +
+        week.getFullYear() +
         ' — ' +
-        formatDate(end);
+        String(end.getDate()).padStart(2, '0') + '/' +
+        String(end.getMonth() + 1).padStart(2, '0') + '/' +
+        end.getFullYear();
 
     for (let i = 0; i < 7; i++) {
         const d = new Date(week);
