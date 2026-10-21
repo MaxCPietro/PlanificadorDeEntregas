@@ -169,7 +169,8 @@ button.danger {
 
 /* Texto descriptivo de cada indicador */
 .stat span {
-    font-size: 12px;
+    font-size: 20px;
+    font-weight: 400;
     color: #68778a;
 }
 
@@ -1106,6 +1107,6 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 @media (max-width: 650px) {
     .stats { gap: 4px; }
     .stats .stat { padding: 7px 5px; gap: 3px; }
-    .stats .stat span { font-size: 9px; }
+    .stats .stat span { font-size: 12px; font-weight: 400; }
     .stats .stat strong { font-size: 12px; }
 }
