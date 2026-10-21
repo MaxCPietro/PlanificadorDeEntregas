@@ -41,8 +41,7 @@ const STATUS = [
     'PENDIENTE',
     'PROGRAMADO',
     'EN REPARTO',
-    'ENTREGADO',
-    'NO ENTREGADO'
+    'ENTREGADO'
 ];
 
 let sb = null;
@@ -292,6 +291,7 @@ async function loadAll() {
         cache[t] = data || [];
     }
 
+    await syncDeliveryStatuses();
     populateSelects();
 }
 
@@ -396,7 +396,7 @@ function render() {
             'Sin programar',
             a.filter(p =>
                 !p.fecha_entrega &&
-                !['ENTREGADO', 'NO ENTREGADO'].includes(p.estado)
+                !['ENTREGADO'].includes(p.estado)
             ).length
         ],
         [
@@ -523,7 +523,7 @@ function orderCard(p) {
 
     e.innerHTML = `
         <b>#${esc(p.numero)}</b>
-        <span class="badge">${esc(p.estado)}</span>
+        ${statusBadge(p.estado)}
         <div>${esc(c.nombre || 'Cliente')}</div>
         <small>
             ${esc(p.localidad_entrega || c.localidad || 'Sin localidad')}
@@ -619,7 +619,7 @@ function renderCalendar() {
 
     const un = a.filter(p =>
         !p.fecha_entrega &&
-        !['NO ENTREGADO'].includes(p.estado)
+        !['ENTREGADO'].includes(p.estado)
     );
 
     $('#backlogCount').textContent = `(${un.length})`;
@@ -704,7 +704,7 @@ function renderOrders() {
                         <td>${esc(nameOf('clientes', p.cliente_id))}</td>
                         <td>${esc(nameOf('vendedores', p.vendedor_id))}</td>
                         <td>${esc(p.fecha_entrega || '—')}</td>
-                        <td>${esc(p.estado)}</td>
+                        <td>${statusBadge(p.estado)}</td>
                         <td>${esc(p.transportista || '—')}</td>
                         <td>${orderProducts(p.id).length}</td>
                         <td><strong>${bultos(p).toLocaleString('es-AR')}</strong></td>
@@ -1317,19 +1317,26 @@ function nextOrderNumber() {
 
 
 function todayStatus(date, status) {
-    if (
-        date === iso(new Date()) &&
-        status !== 'ENTREGADO' &&
-        status !== 'NO ENTREGADO'
-    ) {
-        return 'EN REPARTO';
-    }
+    if (!date) return 'PENDIENTE';
+    const today = iso(new Date());
+    if (date < today) return 'ENTREGADO';
+    if (date === today) return 'EN REPARTO';
+    return 'PROGRAMADO';
+}
 
-    if (status === 'EN REPARTO' && date !== iso(new Date())) {
-        return date ? 'PROGRAMADO' : 'PENDIENTE';
-    }
+function statusBadge(status) {
+    const safe = STATUS.includes(status) ? status : 'PENDIENTE';
+    return `<span class="status-badge status-${safe.replaceAll(' ', '-')}">${esc(safe)}</span>`;
+}
 
-    return status;
+async function syncDeliveryStatuses() {
+    const changes = cache.pedidos.filter(p => p.estado !== todayStatus(p.fecha_entrega, p.estado));
+    for (const p of changes) {
+        const next = todayStatus(p.fecha_entrega, p.estado);
+        const { error } = await sb.from('pedidos').update({ estado: next }).eq('id', p.id);
+        if (error) throw error;
+        p.estado = next;
+    }
 }
 
 
@@ -1909,7 +1916,7 @@ function initMap() {
 /** Pedidos pendientes con coordenadas válidas. */
 function mapped() {
     return cache.pedidos.filter(p =>
-        !['ENTREGADO', 'NO ENTREGADO'].includes(p.estado) &&
+        !['ENTREGADO'].includes(p.estado) &&
         p.latitud != null &&
         p.longitud != null &&
         Number.isFinite(+p.latitud) &&
@@ -2145,7 +2152,7 @@ function drawMap() {
     });
 
     const missing = cache.pedidos.filter(p =>
-        !['ENTREGADO', 'NO ENTREGADO'].includes(p.estado) &&
+        !['ENTREGADO'].includes(p.estado) &&
         (p.latitud == null || p.longitud == null)
     );
 
