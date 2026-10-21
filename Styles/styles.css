@@ -1100,13 +1100,27 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
 
 header #logout{background:#fff!important;color:#172534!important;border:1px solid #cfd8e2!important;font-weight:700}header #logout:hover{background:#edf3f8!important;color:#172534!important}.ui-sort-btn{background:transparent!important;border:0!important;color:inherit!important;padding:5px 3px;font-weight:700;white-space:nowrap;cursor:pointer}.ui-day-sort{padding:3px 6px;font-size:11px;background:#fff;color:#172534;border:1px solid #cfd8e2}.order.dragging{opacity:.45}
 
-/* Mantener los cuatro indicadores en una sola fila también en pantallas estrechas. */
-.stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.stats .stat { min-width: 0; }
-.stats .stat span { white-space: nowrap; }
+/* Indicadores compactos: cuatro tarjetas en una sola fila.
+   En pantallas pequeñas se desplazan horizontalmente sin recortar su contenido. */
+.stats {
+    grid-template-columns: repeat(4, minmax(145px, 1fr));
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 3px;
+}
+.stats .stat {
+    min-width: 0;
+    flex-wrap: nowrap;
+}
+.stats .stat span,
+.stats .stat strong {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
 @media (max-width: 650px) {
-    .stats { gap: 4px; }
-    .stats .stat { padding: 7px 5px; gap: 3px; }
-    .stats .stat span { font-size: 12px; font-weight: 400; }
-    .stats .stat strong { font-size: 12px; }
+    .stats { gap: 8px; }
+    .stats .stat { padding: 9px 10px; }
+    .stats .stat span { font-size: 16px; font-weight: 400; }
+    .stats .stat strong { font-size: 16px; }
 }
