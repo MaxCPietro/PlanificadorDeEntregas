@@ -152,13 +152,19 @@ button.danger {
 /* Cuadrícula de indicadores */
 .stats {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
 }
 
 /* Las tarjetas no agregan un margen inferior propio */
 .stat {
     margin: 0;
+    padding: 10px 14px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }
 
 /* Texto descriptivo de cada indicador */
@@ -169,9 +175,10 @@ button.danger {
 
 /* Valor principal del indicador */
 .stat strong {
-    display: block;
-    font-size: 25px;
-    margin-top: 5px;
+    display: inline;
+    font-size: 20px;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
 }
 
 /* Etiquetas pequeñas */
@@ -1091,3 +1098,14 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
 }
 
 header #logout{background:#fff!important;color:#172534!important;border:1px solid #cfd8e2!important;font-weight:700}header #logout:hover{background:#edf3f8!important;color:#172534!important}.ui-sort-btn{background:transparent!important;border:0!important;color:inherit!important;padding:5px 3px;font-weight:700;white-space:nowrap;cursor:pointer}.ui-day-sort{padding:3px 6px;font-size:11px;background:#fff;color:#172534;border:1px solid #cfd8e2}.order.dragging{opacity:.45}
+
+/* Mantener los cuatro indicadores en una sola fila también en pantallas estrechas. */
+.stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.stats .stat { min-width: 0; }
+.stats .stat span { white-space: nowrap; }
+@media (max-width: 650px) {
+    .stats { gap: 4px; }
+    .stats .stat { padding: 7px 5px; gap: 3px; }
+    .stats .stat span { font-size: 9px; }
+    .stats .stat strong { font-size: 12px; }
+}
