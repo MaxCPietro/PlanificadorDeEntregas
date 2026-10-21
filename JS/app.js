@@ -1176,8 +1176,8 @@ function addProductLine(p = {}) {
             title="Cantidad / bultos"
         >
 
-        <select class="line-product" required title="Código">
-            <option value="">Cod.</option>
+        <div class="line-product-cell"><select class="line-product" required title="Seleccionar producto">
+            <option value="">Producto</option>
             ${cache.productos
                 .filter(x => x.activo)
                 .map(x => `
@@ -1187,7 +1187,7 @@ function addProductLine(p = {}) {
                 `).join('')}
         </select>
 
-        <span class="line-desc">${esc(pr.nombre || '')}</span>
+        <span class="line-desc">${esc(pr.nombre || '')}</span></div>
 
         <input
             class="line-price"
@@ -1263,7 +1263,8 @@ function calcTotal() {
     let total = 0;
     let qty = 0;
 
-    document.querySelectorAll('.product-line').forEach(r => {
+    document.querySelectorAll('.product-line').forEach((r, index) => {
+        r.querySelector('.line-qty').setAttribute('data-row-number', String(index + 1));
         const q = +r.querySelector('.line-qty').value || 0;
         const price = parsePrice(r.querySelector('.line-price').value);
 
@@ -1559,6 +1560,7 @@ function updatePrintDetails() {
 
 $('#oDelivery').onchange = () => {
     $('#oStatus').value = todayStatus($('#oDelivery').value, $('#oStatus').value);
+    updateOrderStatusColor();
 };
 
 
@@ -1567,7 +1569,7 @@ $('#oDelivery').onchange = () => {
  * El título se usa como nombre sugerido por la mayoría de navegadores
  * al seleccionar «Guardar como PDF» (no puede imponerse desde JavaScript).
  */
-function printProfessionalOrder() {
+function printProfessionalOrder(mode = 'print') {
     const get = selector => $(selector)?.value?.trim() || '';
     const client = cache.clientes.find(c => String(c.id) === get('#oClient')) || {};
     const numero = get('#oNumber') || 'SinNumero';
@@ -1754,6 +1756,12 @@ function printProfessionalOrder() {
         }
     };
     win.focus();
+    if (mode === 'print') {
+        win.addEventListener('load', () => win.print(), { once:true });
+        setTimeout(() => win.print(), 350);
+    } else {
+        downloadButton.click();
+    }
     // Generar y descargar el PDF automáticamente, sin abrir el diálogo de impresión.
     // Se conserva el botón Imprimir para quien necesite una copia en papel.
     // La descarga debe iniciarse con un clic real del usuario para evitar bloqueos del navegador.
@@ -1761,7 +1769,23 @@ function printProfessionalOrder() {
 }
 
 
-$('#printOrder').onclick = printProfessionalOrder;
+$('#printOrder').onclick = () => printProfessionalOrder('print');
+$('#exportOrderPdf').onclick = () => printProfessionalOrder('pdf');
+function updateOrderStatusColor() {
+    const el = $('#oStatus');
+    el.classList.remove('status-PENDIENTE','status-PROGRAMADO','status-EN-REPARTO','status-ENTREGADO');
+    el.classList.add('status-' + el.value.replaceAll(' ', '-'));
+}
+$('#oStatus').addEventListener('change', updateOrderStatusColor);
+const orderDlg = $('#orderDlg');
+new MutationObserver(() => { if (orderDlg.open) updateOrderStatusColor(); }).observe(orderDlg, {attributes:true,attributeFilter:['open']});
+$('#verifyOrderMap').onclick = () => {
+    const lat = Number($('#oLat').value), lng = Number($('#oLng').value);
+    if (!$('#oLat').value || !$('#oLng').value || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat)>90 || Math.abs(lng)>180) {
+        toast('Primero buscá o ingresá coordenadas válidas'); return;
+    }
+    window.open('https://www.openstreetmap.org/?mlat=' + encodeURIComponent(lat) + '&mlon=' + encodeURIComponent(lng) + '#map=17/' + lat + '/' + lng, '_blank', 'noopener,noreferrer');
+};
 $('#addLine').onclick = openProductPicker;
 $('#newOrder').onclick = newOrder;
 $('#newOrder2').onclick = newOrder;
