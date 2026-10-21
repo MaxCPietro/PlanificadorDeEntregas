@@ -83,6 +83,31 @@ function iso(d) {
 }
 
 
+/** Fecha visible dd-mmmm-aa; los valores persistidos permanecen en ISO. */
+function formatDate(value) {
+    if (!value) return '—';
+    let year, month, day;
+    if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) return '—';
+        year = value.getFullYear();
+        month = value.getMonth() + 1;
+        day = value.getDate();
+    } else {
+        const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T|\s)/.exec(String(value));
+        if (!match) return String(value);
+        [, year, month, day] = match;
+        year = Number(year);
+        month = Number(month);
+        day = Number(day);
+        const valid = new Date(year, month - 1, day);
+        if (valid.getFullYear() !== year || valid.getMonth() !== month - 1 || valid.getDate() !== day) return String(value);
+    }
+    const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+        'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    return String(day).padStart(2, '0') + '-' + months[month - 1] + '-' +
+        String(year).slice(-2).padStart(2, '0');
+}
+
 /** Escapa HTML. */
 function esc(v) {
     return String(v ?? '').replace(/[&<>"']/g, c => ({
@@ -651,9 +676,9 @@ function renderCalendar() {
     end.setDate(end.getDate() + 6);
 
     $('#week').textContent =
-        week.toLocaleDateString('es-AR') +
+        formatDate(week) +
         ' — ' +
-        end.toLocaleDateString('es-AR');
+        formatDate(end);
 
     for (let i = 0; i < 7; i++) {
         const d = new Date(week);
@@ -665,7 +690,7 @@ function renderCalendar() {
         col.innerHTML = `
             <div class="day-head">
                 <span>${days[i]}</span>
-                <span>${d.getDate()}/${d.getMonth() + 1}</span><button type="button" class="ui-day-sort">Ordenar</button>
+                <span>${formatDate(d)}</span><button type="button" class="ui-day-sort">Ordenar</button>
             </div>
             <div class="drop"></div>
         `;
@@ -715,8 +740,8 @@ function renderOrders() {
                         <td>${esc(p.numero)}</td>
                         <td>${esc(nameOf('clientes', p.cliente_id))}</td>
                         <td>${esc(nameOf('vendedores', p.vendedor_id))}</td>
-                        <td>${esc(p.fecha_pedido || '—')}</td>
-                        <td>${esc(p.fecha_entrega || '—')}</td>
+                        <td>${esc(formatDate(p.fecha_pedido))}</td>
+                        <td>${esc(formatDate(p.fecha_entrega))}</td>
                         <td>${statusBadge(p.estado)}</td>
                         <td>${esc(p.transportista || '—')}</td>
                         <td><strong>${bultos(p).toLocaleString('es-AR')}</strong></td>
@@ -1430,7 +1455,7 @@ async function editOrder(id) {
 
     $('#printOrderMeta').textContent =
         'Pedido #' + p.numero +
-        ' · ' + (p.fecha_pedido || '') +
+        ' · ' + formatDate(p.fecha_pedido) +
         ' · ' + nameOf('clientes', p.cliente_id);
 
     $('#oAddress').value =
@@ -1476,7 +1501,7 @@ function updatePrintDetails() {
     $('#printOrderTitle').textContent = `PEDIDO N.º ${$('#oNumber').value || '—'}`;
     $('#printOrderMeta').textContent =
         `Pedido #${$('#oNumber').value || '—'} · ` +
-        `Fecha: ${$('#oDate').value || '—'}`;
+        `Fecha: ${formatDate($('#oDate').value)}`;
 
     $('#printOrderDetails').innerHTML = `
         <span><b>Cliente:</b> ${esc(c.nombre || '—')}</span>
@@ -1485,7 +1510,7 @@ function updatePrintDetails() {
         <span><b>Localidad:</b> ${esc($('#oLocality').value || '—')},
             ${esc($('#oProvince').value || '')}</span>
         <span><b>Entrega:</b>
-            ${esc($('#oDelivery').value || 'Sin programar')}</span>
+            ${esc($('#oDelivery').value ? formatDate($('#oDelivery').value) : 'Sin programar')}</span>
         <span><b>Pago:</b> ${esc($('#oPayment').value || 'Contado')}</span>
         <span><b>Vendedor:</b>
             ${esc(nameOf('vendedores', $('#oSeller').value))}</span>
@@ -1518,11 +1543,7 @@ function printProfessionalOrder() {
         ? numero.padStart(4, '0')
         : safePart(numero);
     const fileName = `P${numeroFormateado}-${safePart(cliente)}`;
-    const dateAR = value => {
-        if (!value) return 'Sin programar';
-        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-        return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
-    };
+    const dateAR = value => value ? formatDate(value) : 'Sin programar';
     const detail = (label, value) => `
         <div class="detail"><div class="label">${esc(label)}</div>
         <div class="value">${esc(value || '—')}</div></div>`;
@@ -2069,7 +2090,7 @@ function routeCard(key, color, orders, details = '') {
                                 'OPT-',
                                 'Distribución sugerida · '
                             ))
-                            : 'Ruta ' + esc(key)
+                            : 'Ruta ' + esc(formatDate(key))
                 }</b>
             </label>
 
@@ -2184,7 +2205,7 @@ function drawMap() {
                 ${esc(
                     key === 'SIN FECHA'
                         ? 'Sin fecha de entrega'
-                        : key
+                        : formatDate(key)
                 )}
                 · ${esc(p.estado)}
             `);
