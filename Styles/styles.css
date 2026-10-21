@@ -1159,3 +1159,12 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 #orderDlg .product-line .line-product-cell .line-desc { flex:1 1 auto; white-space:normal; overflow:visible; overflow-wrap:anywhere; line-height:1.35; }
 #orderDlg .product-line > button.danger { justify-self:center; align-self:center; width:19px; height:19px; min-width:19px; padding:0; border:0; border-radius:50%; background:#dc2626; color:white; font-size:13px; line-height:19px; display:grid; place-items:center; cursor:pointer; }
 #orderDlg #oStatus, #orderDlg #oStatus.status-PENDIENTE, #orderDlg #oStatus.status-PROGRAMADO, #orderDlg #oStatus.status-EN-REPARTO, #orderDlg #oStatus.status-ENTREGADO { background:#fff; color:inherit; font-weight:normal; }
+
+/* Tabla de pedido: código separado, descripción en una sola línea */
+#orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 52px 104px minmax(440px,1fr) 100px 76px 120px 28px; min-width:920px; }
+#orderDlg .product-line > select.line-product { width:100%; min-width:0; font-size:12px; }
+#orderDlg .product-line > .line-desc { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; align-self:center; }
+#orderDlg .product-line > button.danger { background:#ed7800; }
+#orderDlg .product-line > .line-total { background:#ffdfbc; }
+#orderDlg .product-foot #orderTotal { background:#ffdfbc; border-radius:4px; padding:3px 7px; }
+#orderDlg #orderForm > .actions { margin-top:10px; }
