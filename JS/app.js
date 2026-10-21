@@ -1176,7 +1176,7 @@ function addProductLine(p = {}) {
             title="Cantidad / bultos"
         >
 
-        <div class="line-product-cell"><select class="line-product" required title="Seleccionar producto">
+        <select class="line-product" required title="Código de producto">
             <option value="">Producto</option>
             ${cache.productos
                 .filter(x => x.activo)
@@ -1187,7 +1187,7 @@ function addProductLine(p = {}) {
                 `).join('')}
         </select>
 
-        <span class="line-desc">${esc(pr.nombre || '')}</span></div>
+        <span class="line-desc">${esc(pr.nombre || '')}</span>
 
         <input
             class="line-price"
@@ -1789,7 +1789,7 @@ $('#verifyOrderMap').onclick = () => {
     if (!$('#oLat').value || !$('#oLng').value || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat)>90 || Math.abs(lng)>180) {
         toast('Primero buscá o ingresá coordenadas válidas'); return;
     }
-    window.open('https://www.openstreetmap.org/?mlat=' + encodeURIComponent(lat) + '&mlon=' + encodeURIComponent(lng) + '#map=17/' + lat + '/' + lng, '_blank', 'noopener,noreferrer');
+    window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng), '_blank', 'noopener,noreferrer');
 };
 $('#addLine').onclick = openProductPicker;
 $('#newOrder').onclick = newOrder;
