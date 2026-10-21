@@ -1825,12 +1825,36 @@ $('#orderForm').onsubmit = async e => {
         return;
     }
 
+    // Sincronizar los datos de entrega del pedido con la ficha del cliente.
+    // Solo actualizamos los campos que cambiaron para evitar escrituras innecesarias.
+    const clientUpdates = {};
+    for (const field of ['direccion_entrega', 'latitud', 'longitud']) {
+        const previous = field === 'direccion_entrega'
+            ? (c[field] || null)
+            : (c[field] == null ? null : Number(c[field]));
+        if (previous !== data[field]) {
+            clientUpdates[field] = data[field];
+        }
+    }
+
+    if (Object.keys(clientUpdates).length) {
+        const { error: clientError } = await sb
+            .from('clientes')
+            .update(clientUpdates)
+            .eq('id', c.id);
+
+        if (clientError) {
+            toast('Pedido guardado, pero no se pudo actualizar el cliente: ' + clientError.message);
+            return;
+        }
+    }
+
     $('#orderDlg').close();
 
     await loadAll();
     render();
 
-    toast('Pedido guardado en la base online');
+    toast('Pedido y datos del cliente guardados en la base online');
 };
 
 
