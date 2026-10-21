@@ -1169,9 +1169,9 @@ function addProductLine(p = {}) {
         <input
             class="line-qty"
             type="number"
-            min="0.001"
-            step="0.001"
-            value="${p.cantidad ?? 1}"
+            min="1"
+            step="1"
+            value="${Math.max(1, Math.trunc(Number(p.cantidad) || 1))}"
             required
             title="Cantidad / bultos"
         >
@@ -1240,6 +1240,11 @@ function addProductLine(p = {}) {
         x.oninput = calcTotal;
     });
 
+    const qtyInput = row.querySelector('.line-qty');
+    qtyInput.addEventListener('change', () => {
+        qtyInput.value = String(Math.max(1, Math.trunc(Number(qtyInput.value) || 1)));
+        calcTotal();
+    });
     const priceInput = row.querySelector('.line-price');
     priceInput.addEventListener('focus', () => {
         priceInput.value = String(parsePrice(priceInput.value)).replace('.', ',');
@@ -1460,6 +1465,8 @@ function newOrder() {
     $('#oProvince').value = 'Buenos Aires';
 
     $('#productLines').innerHTML = '';
+    calcTotal();
+    $('#geoMsg').textContent = '';
 
     $('#deleteOrder').classList.add('hidden');
 
@@ -1771,6 +1778,17 @@ $('#newClient').onclick = () => editEntity('clientes');
 $('#newSeller').onclick = () => editEntity('vendedores');
 $('#newProduct').onclick = () => editEntity('productos');
 
+
+$('#verifyOrderMap').onclick = () => {
+    const latText = $('#oLat').value.trim();
+    const lngText = $('#oLng').value.trim();
+    const lat = Number(latText), lng = Number(lngText);
+    if (!latText || !lngText || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        toast('Primero ingresá o buscá coordenadas válidas');
+        return;
+    }
+    window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng), '_blank', 'noopener,noreferrer');
+};
 
 $('#geocodeOrder').onclick = async () => {
     const q = [
