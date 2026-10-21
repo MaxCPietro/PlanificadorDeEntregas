@@ -1,2 +1,0 @@
-Base de datos de clientes
-Que cargue el vendedor automáticamente
