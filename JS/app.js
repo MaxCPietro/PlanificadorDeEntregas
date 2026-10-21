@@ -469,7 +469,6 @@ function render() {
 
 
 const uiCalendarOrder = new Map();
-const uiCalendarSortDirection = new Map();
 const uiTableSort = new Map();
 
 function orderedCards(items, date) {
@@ -479,21 +478,6 @@ function orderedCards(items, date) {
         const ib = order.indexOf(String(b.id));
         return (ia < 0 ? Infinity : ia) - (ib < 0 ? Infinity : ib);
     });
-}
-
-function sortCalendarColumn(zone, date, button) {
-    const key = date ?? 'backlog';
-    const direction = -(uiCalendarSortDirection.get(key) || -1);
-    uiCalendarSortDirection.set(key, direction);
-    const orders = [...zone.querySelectorAll(':scope > .order')];
-    orders.sort((a, b) => {
-        const pa = cache.pedidos.find(p => String(p.id) === a.dataset.orderId);
-        const pb = cache.pedidos.find(p => String(p.id) === b.dataset.orderId);
-        return direction * ((Number(pa?.numero) || 0) - (Number(pb?.numero) || 0));
-    }).forEach(card => zone.append(card));
-    rememberCardOrder(zone, date);
-    button.textContent = direction === 1 ? '↑ #' : '↓ #';
-    button.title = direction === 1 ? 'Orden ascendente; clic para descendente' : 'Orden descendente; clic para ascendente';
 }
 
 function rememberCardOrder(zone, date) {
@@ -566,11 +550,6 @@ function enableTableSorting(id) {
     apply();
 }
 
-function calendarShortDate(value) {
-    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
-    return match ? `${match[3]}/${match[2]}/${match[1].slice(-2)}` : '—';
-}
-
 function orderCard(p) {
     const c = cache.clientes.find(x => x.id === p.cliente_id) || {};
 
@@ -586,7 +565,7 @@ function orderCard(p) {
         <div>${esc(c.nombre || 'Cliente')}</div>
         <small>
             ${esc(p.localidad_entrega || c.localidad || 'Sin localidad')}
-            · ${bultos(p)} ${bultos(p) === 1 ? 'bulto' : 'bultos'}${p.estado === 'PENDIENTE' ? ' · Pedido: ' + calendarShortDate(p.fecha_pedido) : ''}
+            · ${bultos(p)} ${bultos(p) === 1 ? 'bulto' : 'bultos'}
         </small>
         <small>
             Vendedor: ${esc(nameOf('vendedores', p.vendedor_id))}
@@ -716,13 +695,6 @@ function renderCalendar() {
 
     orderedCards(un,null).forEach(p => back.append(orderCard(p)));
     dropZone(back, null);
-    const backlogSort = document.createElement('button');
-    backlogSort.type = 'button';
-    backlogSort.className = 'calendar-sort-btn';
-    backlogSort.textContent = '↕ #';
-    backlogSort.title = 'Ordenar pendientes por número de pedido';
-    backlogSort.onclick = () => sortCalendarColumn(back, null, backlogSort);
-    $('#backlogCount').after(backlogSort);
 
     const cal = $('#calendar');
     cal.innerHTML = '';
@@ -762,7 +734,6 @@ function renderCalendar() {
             <div class="day-head">
                 <span>${days[i]}</span>
                 <span>${calendarDate(d)}</span>
-                <button type="button" class="calendar-sort-btn" title="Ordenar por número de pedido">↕ #</button>
             </div>
             <div class="drop"></div>
         `;
@@ -772,7 +743,6 @@ function renderCalendar() {
         orderedCards(a.filter(p => p.fecha_entrega === iso(d)),iso(d))
             .forEach(p => z.append(orderCard(p)));
         dropZone(z, iso(d));
-        col.querySelector('.calendar-sort-btn').onclick = e => sortCalendarColumn(z, iso(d), e.currentTarget);
         cal.append(col);
     }
 }
