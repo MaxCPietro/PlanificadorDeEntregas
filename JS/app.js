@@ -1169,9 +1169,9 @@ function addProductLine(p = {}) {
         <input
             class="line-qty"
             type="number"
-            min="0.001"
-            step="0.001"
-            value="${p.cantidad ?? 1}"
+            min="1"
+            step="1"
+            value="${Math.max(1, Math.trunc(Number(p.cantidad) || 1))}"
             required
             title="Cantidad / bultos"
         >
@@ -1240,6 +1240,11 @@ function addProductLine(p = {}) {
         x.oninput = calcTotal;
     });
 
+    const qtyInput = row.querySelector('.line-qty');
+    qtyInput.addEventListener('change', () => {
+        qtyInput.value = String(Math.max(1, Math.trunc(Number(qtyInput.value) || 1)));
+        calcTotal();
+    });
     const priceInput = row.querySelector('.line-price');
     priceInput.addEventListener('focus', () => {
         priceInput.value = String(parsePrice(priceInput.value)).replace('.', ',');
