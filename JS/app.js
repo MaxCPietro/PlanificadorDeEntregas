@@ -1210,7 +1210,7 @@ function addProductLine(p = {}) {
 
         <span class="line-total">${money(lineTotal(p))}</span>
 
-        <button type="button" class="danger no-print">×</button>
+        <button type="button" class="danger no-print" aria-label="Eliminar línea" title="Eliminar línea">×</button>
     `;
 
     $('#productLines').append(row);
@@ -1779,7 +1779,7 @@ $('#exportOrderPdf').onclick = () => printProfessionalOrder('pdf');
 function updateOrderStatusColor() {
     const el = $('#oStatus');
     el.classList.remove('status-PENDIENTE','status-PROGRAMADO','status-EN-REPARTO','status-ENTREGADO');
-    el.classList.add('status-' + el.value.replaceAll(' ', '-'));
+    // El selector de estado mantiene colores neutros en el formulario.
 }
 $('#oStatus').addEventListener('change', updateOrderStatusColor);
 const orderDlg = $('#orderDlg');
