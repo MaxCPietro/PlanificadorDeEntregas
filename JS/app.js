@@ -1451,19 +1451,7 @@ function updatePrintDetails() {
 
 
 $('#oDelivery').onchange = () => {
-    if (
-        $('#oDelivery').value === iso(new Date()) &&
-        $('#oStatus').value !== 'ENTREGADO' &&
-        $('#oStatus').value !== 'NO ENTREGADO'
-    ) {
-        $('#oStatus').value = 'EN REPARTO';
-    } else if (
-        $('#oStatus').value === 'EN REPARTO' &&
-        $('#oDelivery').value !== iso(new Date())
-    ) {
-        $('#oStatus').value =
-            $('#oDelivery').value ? 'PROGRAMADO' : 'PENDIENTE';
-    }
+    $('#oStatus').value = todayStatus($('#oDelivery').value, $('#oStatus').value);
 };
 
 
