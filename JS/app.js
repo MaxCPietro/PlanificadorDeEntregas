@@ -284,11 +284,24 @@ async function loadAll() {
             q = q.order('nombre', { ascending: true });
         }
 
-        const { data, error } = await q.limit(3000);
-
-        if (error) throw error;
-
-        cache[t] = data || [];
+        if (t === 'clientes') {
+            // Traer todas las páginas: Supabase puede limitar filas por consulta.
+            const allClients = [];
+            const pageSize = 1000;
+            let offset = 0;
+            while (true) {
+                const { data, error } = await q.range(offset, offset + pageSize - 1);
+                if (error) throw error;
+                allClients.push(...(data || []));
+                if (!data || data.length < pageSize) break;
+                offset += pageSize;
+            }
+            cache[t] = allClients;
+        } else {
+            const { data, error } = await q.limit(3000);
+            if (error) throw error;
+            cache[t] = data || [];
+        }
     }
 
     await syncDeliveryStatuses();
@@ -752,12 +765,32 @@ function renderClients() {
         ['updated_at', 'Actualizado']
     ];
 
+    const fieldSelect = $('#clientSearchField');
+    if (fieldSelect && !fieldSelect.dataset.initialized) {
+        fieldSelect.innerHTML = '<option value="*">Todas las columnas</option>' +
+            cols.map(([key, label]) =>
+                `<option value="${key}">${esc(label)}</option>`
+            ).join('');
+        fieldSelect.addEventListener('change', renderClients);
+        fieldSelect.dataset.initialized = 'true';
+    }
+
     const search = ($('#clientSearch')?.value || '').trim().toLocaleLowerCase('es-AR');
+    const selectedField = fieldSelect?.value || '*';
+    const searchableColumns = selectedField === '*'
+        ? cols.map(([key]) => key)
+        : [selectedField];
     const filteredClients = cache.clientes.filter(c =>
-        !search || Object.values(c).some(value =>
-            value != null && String(value).toLocaleLowerCase('es-AR').includes(search)
-        )
+        !search || searchableColumns.some(key => {
+            const value = key === 'activo' ? (c[key] ? 'Sí' : 'No') : c[key];
+            return value != null &&
+                String(value).toLocaleLowerCase('es-AR').includes(search);
+        })
     );
+    const count = $('#clientSearchCount');
+    if (count) {
+        count.textContent = `Mostrando ${filteredClients.length} de ${cache.clientes.length} clientes`;
+    }
 
     $('#clientsTable').innerHTML = `
         <table class="client-table">
