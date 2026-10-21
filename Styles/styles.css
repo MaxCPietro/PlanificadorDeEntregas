@@ -1100,27 +1100,31 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline:3px so
 
 header #logout{background:#fff!important;color:#172534!important;border:1px solid #cfd8e2!important;font-weight:700}header #logout:hover{background:#edf3f8!important;color:#172534!important}.ui-sort-btn{background:transparent!important;border:0!important;color:inherit!important;padding:5px 3px;font-weight:700;white-space:nowrap;cursor:pointer}.ui-day-sort{padding:3px 6px;font-size:11px;background:#fff;color:#172534;border:1px solid #cfd8e2}.order.dragging{opacity:.45}
 
-/* Indicadores compactos: cuatro tarjetas en una sola fila.
-   En pantallas pequeñas se desplazan horizontalmente sin recortar su contenido. */
+/* Indicadores responsive con Flexbox: 4 en escritorio, 2 en tablet y 1 en móvil. */
 .stats {
-    grid-template-columns: repeat(4, minmax(145px, 1fr));
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 3px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    overflow: visible;
+    padding-bottom: 0;
 }
 .stats .stat {
+    flex: 1 1 calc(25% - 10px);
     min-width: 0;
-    flex-wrap: nowrap;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }
 .stats .stat span,
 .stats .stat strong {
     white-space: nowrap;
-    flex-shrink: 0;
 }
-@media (max-width: 650px) {
-    .stats { gap: 8px; }
-    .stats .stat { padding: 9px 10px; }
-    .stats .stat span { font-size: 16px; font-weight: 400; }
-    .stats .stat strong { font-size: 16px; }
+@media (max-width: 900px) {
+    .stats .stat { flex-basis: calc(50% - 5px); }
+}
+@media (max-width: 560px) {
+    .stats .stat { flex-basis: 100%; }
+    .stats .stat span { font-size: 18px; font-weight: 400; }
+    .stats .stat strong { font-size: 18px; }
 }
