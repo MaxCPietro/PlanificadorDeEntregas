@@ -1135,3 +1135,10 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 .calendar .day.day-weekend .day-head { color: #255a89; }
 .calendar .day.day-holiday .day-head { color: #a34b21; }
 .calendar .day-head { gap: 4px; flex-wrap: wrap; }
+
+/* Ajustes puntuales de Nuevo Pedido */
+#orderDlg #oNumber[readonly] { background:#ffe0bd; color:#75421e; opacity:1; cursor:not-allowed; }
+#orderDlg #orderForm > .actions { margin-top:10px; }
+#orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 42px 75px minmax(0,1fr) 92px 61px 108px 26px; width:100%; min-width:0; }
+#orderDlg .product-line .line-desc { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#orderDlg .product-line .line-qty, #orderDlg .product-line .line-discount { padding-left:2px; padding-right:2px; }
