@@ -540,11 +540,10 @@ function orderCard(p) {
         <div>${esc(c.nombre || 'Cliente')}</div>
         <small>
             ${esc(p.localidad_entrega || c.localidad || 'Sin localidad')}
-            · ${orderProducts(p.id).length} productos
+            · ${bultos(p)} ${bultos(p) === 1 ? 'bulto' : 'bultos'}
         </small>
         <small>
-            ${esc(p.transportista || 'Sin transportista')}
-            · ${esc(nameOf('vendedores', p.vendedor_id))}
+            Vendedor: ${esc(nameOf('vendedores', p.vendedor_id))}
         </small>
     `;
 
