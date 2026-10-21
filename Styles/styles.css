@@ -1151,3 +1151,11 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 #orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 82px minmax(340px, 1fr) 102px 78px 120px 30px; min-width: 780px; }
 #orderDlg .product-line .line-product-cell select { width: 100%; max-width: none; flex: 1 1 65%; }
 #orderDlg .product-line .line-product-cell .line-desc { flex: 1 1 35%; }
+
+/* Detalle de pedido: descripción prioritaria y controles compactos */
+#orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 52px minmax(450px,1fr) 88px 68px 100px 28px; min-width: 790px; }
+#orderDlg .product-line .line-product-cell { gap:8px; }
+#orderDlg .product-line .line-product-cell select { flex:0 0 135px; width:135px; max-width:135px; }
+#orderDlg .product-line .line-product-cell .line-desc { flex:1 1 auto; white-space:normal; overflow:visible; overflow-wrap:anywhere; line-height:1.35; }
+#orderDlg .product-line > button.danger { justify-self:center; align-self:center; width:19px; height:19px; min-width:19px; padding:0; border:0; border-radius:50%; background:#dc2626; color:white; font-size:13px; line-height:19px; display:grid; place-items:center; cursor:pointer; }
+#orderDlg #oStatus, #orderDlg #oStatus.status-PENDIENTE, #orderDlg #oStatus.status-PROGRAMADO, #orderDlg #oStatus.status-EN-REPARTO, #orderDlg #oStatus.status-ENTREGADO { background:#fff; color:inherit; font-weight:normal; }
