@@ -648,6 +648,39 @@ function dropZone(el, date) {
 }
 
 
+// Feriados nacionales argentinos. Se consultan por año y se almacenan en memoria.
+const holidaysByYear = new Map();
+const holidaysLoading = new Set();
+
+async function loadHolidays(year) {
+    if (holidaysByYear.has(year) || holidaysLoading.has(year)) return;
+    holidaysLoading.add(year);
+    try {
+        const response = await fetch('https://api.argentinadatos.com/v1/feriados/' + year);
+        if (!response.ok) throw new Error('No se pudo consultar el calendario de feriados');
+        const data = await response.json();
+        if (!Array.isArray(data)) throw new Error('Respuesta de feriados inválida');
+        const holidays = new Map();
+        for (const holiday of data) {
+            if (typeof holiday.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(holiday.fecha)) {
+                holidays.set(holiday.fecha, holiday.nombre || 'Feriado nacional');
+            }
+        }
+        holidaysByYear.set(year, holidays);
+        renderCalendar();
+    } catch (error) {
+        console.warn('No se pudieron cargar los feriados nacionales:', error);
+    } finally {
+        holidaysLoading.delete(year);
+    }
+}
+
+function calendarDate(d) {
+    return String(d.getDate()).padStart(2, '0') + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getFullYear()).slice(-2);
+}
+
 function renderCalendar() {
     const a = filtered();
     const back = $('#backlog');
@@ -674,6 +707,9 @@ function renderCalendar() {
 
     const end = new Date(week);
     end.setDate(end.getDate() + 6);
+    for (const year of new Set([week.getFullYear(), end.getFullYear()])) {
+        void loadHolidays(year);
+    }
 
     $('#week').textContent =
         formatDate(week) +
@@ -685,12 +721,16 @@ function renderCalendar() {
         d.setDate(d.getDate() + i);
 
         const col = document.createElement('div');
-        col.className = 'day';
+        const holiday = holidaysByYear.get(d.getFullYear())?.get(iso(d));
+        const weekend = d.getDay() === 0 || d.getDay() === 6;
+        col.className = 'day' + (weekend ? ' day-weekend' : '') +
+            (holiday ? ' day-holiday' : '');
+        if (holiday) col.title = holiday;
 
         col.innerHTML = `
             <div class="day-head">
                 <span>${days[i]}</span>
-                <span>${formatDate(d)}</span><button type="button" class="ui-day-sort">Ordenar</button>
+                <span>${calendarDate(d)}</span>
             </div>
             <div class="drop"></div>
         `;
@@ -699,12 +739,6 @@ function renderCalendar() {
 
         orderedCards(a.filter(p => p.fecha_entrega === iso(d)),iso(d))
             .forEach(p => z.append(orderCard(p)));
-        col.querySelector('.ui-day-sort').onclick=()=>{
-            const cards=[...z.querySelectorAll(':scope > .order')];
-            cards.sort((x,y)=>Number(x.querySelector('b').textContent.replace(/[^0-9]/g,''))-Number(y.querySelector('b').textContent.replace(/[^0-9]/g,'')));
-            cards.forEach(card=>z.append(card));rememberCardOrder(z,iso(d));
-        };
-
         dropZone(z, iso(d));
         cal.append(col);
     }
