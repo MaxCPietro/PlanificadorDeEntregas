@@ -1169,15 +1169,15 @@ function addProductLine(p = {}) {
         <input
             class="line-qty"
             type="number"
-            min="1"
-            step="1"
-            value="${Math.max(1, Math.trunc(Number(p.cantidad) || 1))}"
+            min="0.001"
+            step="0.001"
+            value="${p.cantidad ?? 1}"
             required
             title="Cantidad / bultos"
         >
 
-        <select class="line-product" required title="Código de producto">
-            <option value="">Producto</option>
+        <select class="line-product" required title="Código">
+            <option value="">Cod.</option>
             ${cache.productos
                 .filter(x => x.activo)
                 .map(x => `
@@ -1210,7 +1210,7 @@ function addProductLine(p = {}) {
 
         <span class="line-total">${money(lineTotal(p))}</span>
 
-        <button type="button" class="danger no-print" aria-label="Eliminar línea" title="Eliminar línea">×</button>
+        <button type="button" class="danger no-print">×</button>
     `;
 
     $('#productLines').append(row);
@@ -1240,11 +1240,6 @@ function addProductLine(p = {}) {
         x.oninput = calcTotal;
     });
 
-    const qtyInput = row.querySelector('.line-qty');
-    qtyInput.addEventListener('change', () => {
-        qtyInput.value = String(Math.max(1, Math.trunc(Number(qtyInput.value) || 1)));
-        calcTotal();
-    });
     const priceInput = row.querySelector('.line-price');
     priceInput.addEventListener('focus', () => {
         priceInput.value = String(parsePrice(priceInput.value)).replace('.', ',');
@@ -1268,8 +1263,7 @@ function calcTotal() {
     let total = 0;
     let qty = 0;
 
-    document.querySelectorAll('.product-line').forEach((r, index) => {
-        r.querySelector('.line-qty').setAttribute('data-row-number', String(index + 1));
+    document.querySelectorAll('.product-line').forEach(r => {
         const q = +r.querySelector('.line-qty').value || 0;
         const price = parsePrice(r.querySelector('.line-price').value);
 
@@ -1565,7 +1559,6 @@ function updatePrintDetails() {
 
 $('#oDelivery').onchange = () => {
     $('#oStatus').value = todayStatus($('#oDelivery').value, $('#oStatus').value);
-    updateOrderStatusColor();
 };
 
 
@@ -1574,7 +1567,7 @@ $('#oDelivery').onchange = () => {
  * El título se usa como nombre sugerido por la mayoría de navegadores
  * al seleccionar «Guardar como PDF» (no puede imponerse desde JavaScript).
  */
-function printProfessionalOrder(mode = 'print') {
+function printProfessionalOrder() {
     const get = selector => $(selector)?.value?.trim() || '';
     const client = cache.clientes.find(c => String(c.id) === get('#oClient')) || {};
     const numero = get('#oNumber') || 'SinNumero';
@@ -1761,12 +1754,6 @@ function printProfessionalOrder(mode = 'print') {
         }
     };
     win.focus();
-    if (mode === 'print') {
-        win.addEventListener('load', () => win.print(), { once:true });
-        setTimeout(() => win.print(), 350);
-    } else {
-        downloadButton.click();
-    }
     // Generar y descargar el PDF automáticamente, sin abrir el diálogo de impresión.
     // Se conserva el botón Imprimir para quien necesite una copia en papel.
     // La descarga debe iniciarse con un clic real del usuario para evitar bloqueos del navegador.
@@ -1774,23 +1761,7 @@ function printProfessionalOrder(mode = 'print') {
 }
 
 
-$('#printOrder').onclick = () => printProfessionalOrder('print');
-$('#exportOrderPdf').onclick = () => printProfessionalOrder('pdf');
-function updateOrderStatusColor() {
-    const el = $('#oStatus');
-    el.classList.remove('status-PENDIENTE','status-PROGRAMADO','status-EN-REPARTO','status-ENTREGADO');
-    // El selector de estado mantiene colores neutros en el formulario.
-}
-$('#oStatus').addEventListener('change', updateOrderStatusColor);
-const orderDlg = $('#orderDlg');
-new MutationObserver(() => { if (orderDlg.open) updateOrderStatusColor(); }).observe(orderDlg, {attributes:true,attributeFilter:['open']});
-$('#verifyOrderMap').onclick = () => {
-    const lat = Number($('#oLat').value), lng = Number($('#oLng').value);
-    if (!$('#oLat').value || !$('#oLng').value || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat)>90 || Math.abs(lng)>180) {
-        toast('Primero buscá o ingresá coordenadas válidas'); return;
-    }
-    window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng), '_blank', 'noopener,noreferrer');
-};
+$('#printOrder').onclick = printProfessionalOrder;
 $('#addLine').onclick = openProductPicker;
 $('#newOrder').onclick = newOrder;
 $('#newOrder2').onclick = newOrder;
