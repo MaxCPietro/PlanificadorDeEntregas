@@ -700,10 +700,10 @@ function renderOrders() {
                     <th>Número</th>
                     <th>Cliente</th>
                     <th>Vendedor</th>
+                    <th>Fecha de Pedido</th>
                     <th>Fecha entrega</th>
                     <th>Estado</th>
                     <th>Transportista</th>
-                    <th>Productos</th>
                     <th>Bultos</th>
                     <th>Total</th>
                     <th></th>
@@ -715,10 +715,10 @@ function renderOrders() {
                         <td>${esc(p.numero)}</td>
                         <td>${esc(nameOf('clientes', p.cliente_id))}</td>
                         <td>${esc(nameOf('vendedores', p.vendedor_id))}</td>
+                        <td>${esc(p.fecha_pedido || '—')}</td>
                         <td>${esc(p.fecha_entrega || '—')}</td>
                         <td>${statusBadge(p.estado)}</td>
                         <td>${esc(p.transportista || '—')}</td>
-                        <td>${orderProducts(p.id).length}</td>
                         <td><strong>${bultos(p).toLocaleString('es-AR')}</strong></td>
                         <td>${money(orderTotal(p))}</td>
                         <td>
