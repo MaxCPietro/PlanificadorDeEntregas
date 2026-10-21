@@ -315,10 +315,20 @@ button.danger {
     border-left-color: #1f9d60;
 }
 
-/* Pedido no entregado */
-.order.NO-ENTREGADO {
-    border-left-color: #d64545;
+/* Estado visual con fondo y contraste */
+.status-badge {
+    display: inline-block;
+    padding: 4px 9px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.4;
+    white-space: nowrap;
 }
+.status-PENDIENTE { background: #e5e7eb; color: #374151; }
+.status-PROGRAMADO { background: #1769d2; color: #ffffff; }
+.status-EN-REPARTO { background: #f5c542; color: #332500; }
+.status-ENTREGADO { background: #1f9d60; color: #ffffff; }
 
 /* Información secundaria de la tarjeta */
 .order small {
