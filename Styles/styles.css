@@ -1168,3 +1168,11 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 #orderDlg .product-line > .line-total { background:#ffdfbc; }
 #orderDlg .product-foot #orderTotal { background:#ffdfbc; border-radius:4px; padding:3px 7px; }
 #orderDlg #orderForm > .actions { margin-top:10px; }
+
+/* Tabla de pedido adaptable al ancho disponible, sin scroll horizontal en escritorio */
+#orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 34px 82px minmax(0,1fr) 96px 58px 112px 24px; min-width:0; width:100%; }
+#orderDlg .product-line > .line-qty { padding-left:2px; padding-right:2px; }
+#orderDlg .product-line > .line-product { padding-left:2px; padding-right:2px; font-size:11px; }
+#orderDlg .product-line > .line-discount { padding-left:3px; padding-right:3px; }
+#orderDlg .product-line > .line-desc { min-width:0; }
+@media(max-width:760px) { #orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 30px 72px minmax(0,1fr) 83px 49px 95px 22px; } }
