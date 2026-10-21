@@ -425,7 +425,7 @@ function render() {
         ],
         ['Pedidos', a.length]
     ].map(([x, n]) =>
-        `<div class="stat"><span>${x}</span><strong>${n}</strong></div>`
+        `<div class="stat"><span>${x}</span><strong>${String(n).padStart(4, "0")}</strong></div>`
     ).join('');
 
     renderCalendar();
