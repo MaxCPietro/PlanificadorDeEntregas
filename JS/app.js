@@ -550,6 +550,11 @@ function enableTableSorting(id) {
     apply();
 }
 
+function calendarShortDate(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+    return match ? `${match[3]}/${match[2]}/${match[1].slice(-2)}` : '—';
+}
+
 function orderCard(p) {
     const c = cache.clientes.find(x => x.id === p.cliente_id) || {};
 
@@ -565,7 +570,7 @@ function orderCard(p) {
         <div>${esc(c.nombre || 'Cliente')}</div>
         <small>
             ${esc(p.localidad_entrega || c.localidad || 'Sin localidad')}
-            · ${bultos(p)} ${bultos(p) === 1 ? 'bulto' : 'bultos'}
+            · ${bultos(p)} ${bultos(p) === 1 ? 'bulto' : 'bultos'}${p.estado === 'PENDIENTE' ? ' · Pedido: ' + calendarShortDate(p.fecha_pedido) : ''}
         </small>
         <small>
             Vendedor: ${esc(nameOf('vendedores', p.vendedor_id))}
@@ -695,6 +700,16 @@ function renderCalendar() {
 
     orderedCards(un,null).forEach(p => back.append(orderCard(p)));
     dropZone(back, null);
+    const sortBacklog = $('#sortBacklog');
+    if (sortBacklog) sortBacklog.onclick = () => {
+        const cards = [...back.querySelectorAll(':scope > .order')];
+        cards.sort((a, b) => {
+            const pa = cache.pedidos.find(p => String(p.id) === a.dataset.orderId);
+            const pb = cache.pedidos.find(p => String(p.id) === b.dataset.orderId);
+            return (Number(pa?.numero) || 0) - (Number(pb?.numero) || 0);
+        }).forEach(card => back.append(card));
+        rememberCardOrder(back, null);
+    };
 
     const cal = $('#calendar');
     cal.innerHTML = '';
