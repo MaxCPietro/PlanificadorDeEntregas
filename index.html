@@ -265,17 +265,18 @@
 
         <!-- [18] MÓDULO CLIENTES -->
         <section id="clientsView" class="view panel">
-            <div class="section-head">
+            <div class="section-head" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
                 <h2>Clientes</h2>
-                <button class="primary" id="newClient">
-                    + Cliente
-                </button>
+                <div class="actions" style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    <select id="clientSearchField" aria-label="Columna para buscar clientes">
+                        <option value="*">Todas las columnas</option>
+                    </select>
+                    <input id="clientSearch" type="search" placeholder="Buscar clientes..."
+                        aria-label="Buscar clientes" style="width:260px;max-width:100%">
+                    <button class="primary" id="newClient">+ Cliente</button>
+                </div>
             </div>
-
-            <div class="actions" style="margin-bottom:12px">
-                <input id="clientSearch" type="search" placeholder="Buscar cliente por nombre, código, dirección, teléfono..."
-                    aria-label="Filtrar clientes" style="width:100%;max-width:520px">
-            </div>
+            <div id="clientSearchCount" aria-live="polite" style="margin-bottom:10px;font-size:13px"></div>
             <div id="clientsTable" class="table-wrap"></div>
         </section>
 
