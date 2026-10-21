@@ -278,7 +278,7 @@ async function showApp() {
         await loadAll();
 
         $('#connection').dataset.state = 'connected';
-        $('#connection').textContent = 'Conectado · ' + (user.user_metadata?.display_name?.trim() || user.user_metadata?.full_name?.trim() || user.email);
+        $('#connection').textContent = 'Conectado · ' + (user.user_metadata?.display_name?.trim() || user.user_metadata?.full_name?.trim() || user.raw_user_meta_data.display_name);
 
         render();
         subscribeRealtime();
