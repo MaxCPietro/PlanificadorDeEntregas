@@ -512,7 +512,7 @@ th {
 /* Diseño genérico de una línea de producto */
 .product-line {
     display: grid;
-    grid-template-columns: 82px 55px minmax(180px, 1fr) 102px 62px 120px 30px;
+    grid-template-columns: 82px minmax(220px, 1fr) 102px 62px 120px 30px;
     gap: 0;
     margin: 7px 0;
     align-items: stretch;
@@ -1135,3 +1135,14 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 .calendar .day.day-weekend .day-head { color: #255a89; }
 .calendar .day.day-holiday .day-head { color: #a34b21; }
 .calendar .day-head { gap: 4px; flex-wrap: wrap; }
+
+/* Pedido: campos bloqueados y estado consistente con Calendario */
+#orderDlg input:read-only:not([type="date"]), #orderDlg input:disabled { background:#ffdfbc; color:#75431d; opacity:1; }
+#orderDlg #oStatus { font-weight:700; border-radius:6px; }
+#orderDlg #oStatus.status-PENDIENTE { background:#e5e7eb;color:#374151; }
+#orderDlg #oStatus.status-PROGRAMADO { background:#1769d2;color:#fff; }
+#orderDlg #oStatus.status-EN-REPARTO { background:#f5c542;color:#332500; }
+#orderDlg #oStatus.status-ENTREGADO { background:#1f9d60;color:#fff; }
+.product-line .line-product-cell { display:flex; align-items:center; min-width:0; border-right:1px solid #888; border-bottom:1px solid #888; padding:2px 4px; gap:5px; }
+.product-line .line-product-cell select { min-width:0; width:42%; max-width:150px; font-size:12px; }
+.product-line .line-product-cell .line-desc { flex:1; min-width:0; }
