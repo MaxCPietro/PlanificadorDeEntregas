@@ -1142,3 +1142,106 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 #orderDlg .product-head, #orderDlg .product-line { grid-template-columns: 42px 75px minmax(0,1fr) 92px 61px 108px 26px; width:100%; min-width:0; }
 #orderDlg .product-line .line-desc { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #orderDlg .product-line .line-qty, #orderDlg .product-line .line-discount { padding-left:2px; padding-right:2px; }
+
+
+/* ============================================================
+   24. RESPONSIVE 2026 — pantallas táctiles y escritorio
+   Reglas de pantalla exclusivamente: no alteran el PDF.
+   ============================================================ */
+@media screen {
+  html,body { width:100%; min-width:0; }
+  body { overflow-x:hidden; }
+  .wrap,.panel,.bar,.view,.planner,.mapgrid,.calendar-scroll,.section-head,
+  .actions,.waipara-heading,.form,.form > *,#productLines { min-width:0; }
+  input,select,textarea { max-width:100%; }
+  .form { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .form label { min-width:0; }
+  .form label > input,.form label > select,.form label > textarea { width:100%; min-width:0; }
+  .table-wrap { width:100%; max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .table-wrap table { width:max-content; min-width:100%; }
+  .tabs { max-width:100%; }
+  .tab { min-width:0; }
+  .planner { grid-template-columns:minmax(220px,250px) minmax(0,1fr); }
+  .mapgrid { grid-template-columns:minmax(0,1fr) minmax(240px,310px); }
+  dialog { max-width:calc(100vw - 20px); max-height:calc(100dvh - 20px); }
+  dialog form { min-width:0; }
+  #orderDlg .product-grid { max-width:100%; }
+  #orderDlg .product-head,#orderDlg .product-line {
+    grid-template-columns:42px 75px minmax(0,1fr) 92px 61px 108px 26px;
+  }
+  #orderDlg .product-line > * { min-width:0; }
+}
+@media screen and (max-width:1000px) {
+  .planner,.mapgrid { grid-template-columns:minmax(0,1fr); }
+  .calendar-scroll { max-width:100%; }
+  .bar > .actions { min-width:0; }
+}
+@media screen and (max-width:700px) {
+  header { padding:12px; align-items:flex-start; }
+  header h1 { font-size:clamp(15px,4vw,19px); overflow-wrap:anywhere; }
+  .waipara-heading { width:100%; }
+  .waipara-logo { width:72px; max-height:55px; flex:none; }
+  header > .actions { width:100%; }
+  .wrap { padding:10px; }
+  .bar,.panel { padding:10px; }
+  .tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+  .tabs .tab { padding:9px 4px; font-size:12px; overflow-wrap:anywhere; }
+  .bar > .actions { width:100%; }
+  .bar > .actions select { flex:1 1 145px; min-width:0; }
+  .section-head h2,.section-head h3 { margin:6px 0; }
+  #clientsView .section-head > .actions { margin-left:0!important; width:100%; }
+  #clientSearchField,#clientSearch { flex:1 1 150px; width:auto!important; min-width:0; }
+  .form { grid-template-columns:minmax(0,1fr); }
+  .form > .full { grid-column:1/-1; }
+  dialog { width:calc(100vw - 12px); max-width:calc(100vw - 12px); padding:12px; max-height:calc(100dvh - 12px); }
+  #orderForm > .actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  #orderForm > .actions > span { display:none; }
+  #orderForm > .actions button { width:100%; white-space:normal; }
+  #orderDlg .product-grid { overflow:visible; border:0; background:transparent; }
+  #orderDlg .product-head { display:none; }
+  #orderDlg .product-line {
+    display:grid; width:100%; min-width:0;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px; align-items:stretch; padding:12px;
+    border:1px solid #efd7bf; border-radius:10px;
+    background:#fffaf5; margin:10px 0;
+  }
+  #orderDlg .product-line > input,
+  #orderDlg .product-line > select,
+  #orderDlg .product-line > span,
+  #orderDlg .product-line > button {
+    min-width:0; width:100%; max-width:100%; min-height:40px;
+    border:1px solid #e4d6c8; border-radius:6px;
+    padding:8px; font-size:14px; background:#fff;
+  }
+  #orderDlg .product-line > .line-qty { grid-column:1; grid-row:1; }
+  #orderDlg .product-line > .line-product { grid-column:2; grid-row:1; }
+  #orderDlg .product-line > .line-desc {
+    grid-column:1/-1; grid-row:2; min-height:0;
+    height:auto; white-space:normal; overflow-wrap:anywhere;
+    text-overflow:clip; background:#fff4e8;
+  }
+  #orderDlg .product-line > .line-desc::before { content:"Descripción: "; font-weight:700; }
+  #orderDlg .product-line > .line-price { grid-column:1; grid-row:3; }
+  #orderDlg .product-line > .line-discount { grid-column:2; grid-row:3; }
+  #orderDlg .product-line > .line-total { grid-column:1; grid-row:4; display:flex; align-items:center; background:#ffe4c5; font-weight:700; }
+  #orderDlg .product-line > button { grid-column:2; grid-row:4; width:100%; }
+  #orderDlg .product-line > .line-qty,
+  #orderDlg .product-line > .line-product,
+  #orderDlg .product-line > .line-price,
+  #orderDlg .product-line > .line-discount { padding-top:15px; }
+  #orderDlg .product-foot { gap:10px; flex-wrap:wrap; align-items:center; background:#fff0dc; border-radius:8px; }
+  #orderDlg .product-foot b:last-child { gap:8px; flex-wrap:wrap; }
+  .picker-list { grid-template-columns:minmax(0,1fr); }
+  .picker-actions { gap:8px; }
+  .picker-actions button { flex:1 1 150px; }
+  .stats .stat { min-width:0; }
+  #map { height:min(65dvh,430px); min-height:280px; }
+}
+@media screen and (max-width:380px) {
+  .tabs { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .waipara-logo { width:58px; }
+  .stat span,.stat strong { font-size:16px!important; }
+  #orderDlg .product-line { padding:8px; gap:6px; }
+  #orderDlg .product-line > input,#orderDlg .product-line > select { font-size:16px; }
+}
