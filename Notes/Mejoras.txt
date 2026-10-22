@@ -1,8 +1,14 @@
 Version 6 (Cambios Menores)
-* Base de datos de clientes
-* Que cargue el vendedor automáticamente
-* Cargar los precios y que los traiga automáticamente.
-* Optimizar la parte de los repartos
+1) Geolocalización.
+    1) Que permita marcar rutas pasadas.
+    2) Que estime el gasto en combustible
+    3) que la optimización también calcule el tiempo y el gasto para volver
+    4) Mejorar el nombre de las rutas
+    5) Tablas con las rutas pasadas y futuras
+2) Sacar los fitros de arriba y ponerlos donde correspondan en cada subsección.
+3) Base de datos de clientes
+4) Que cargue el vendedor automáticamente
+5) Cargar los precios y que los traiga automáticamente.
 
 Version 7
 * Migrar a Base de datos de DonWeb
