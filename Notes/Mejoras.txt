@@ -5,10 +5,15 @@ Version 6 (Cambios Menores)
     3) que la optimización también calcule el tiempo y el gasto para volver
     4) Mejorar el nombre de las rutas
     5) Tablas con las rutas pasadas y futuras
+    6) Mostar rutas por transportista
+    7) Mostrar camino de vuelta.
+    8) Guardar en base de datos.
 2) Sacar los fitros de arriba y ponerlos donde correspondan en cada subsección.
 3) Base de datos de clientes
 4) Que cargue el vendedor automáticamente
 5) Cargar los precios y que los traiga automáticamente.
+7) Cambiar medio de autenticación de Daniel
+8) Poner resumen de pedidos en planificación.
 
 Version 7
 * Migrar a Base de datos de DonWeb
