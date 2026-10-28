@@ -2025,11 +2025,50 @@ $('#deleteOrder').onclick = async () => {
    [15] CONFIGURACIÓN DEL MAPA Y ESTADO DE LAS RUTAS
    ============================================================ */
 
+const geoSettings = JSON.parse(localStorage.getItem('waiparaGeoSettings') || '{}');
 const DEPOT = {
-    name: 'Depósito Pilar · Sgto. Juan Bautista Cabral 1155, La Lonja',
-    lat: -34.441901,
-    lng: -58.862627
+    name: geoSettings.depotName || 'Depósito Pilar · Sgto. Juan Bautista Cabral 1155, La Lonja',
+    lat: Number.isFinite(+geoSettings.lat) && geoSettings.lat !== undefined ? +geoSettings.lat : -34.441901,
+    lng: Number.isFinite(+geoSettings.lng) && geoSettings.lng !== undefined ? +geoSettings.lng : -58.862627
 };
+function geoFuelSummary(km) {
+    const liters = km * (Number(geoSettings.consumption) || 12) / 100;
+    const price = Number(geoSettings.fuelPrice);
+    return liters.toFixed(1) + ' L estimados' +
+        (price > 0 ? ' · $ ' + (liters * price).toLocaleString('es-AR', {maximumFractionDigits: 0}) : ' · precio/L sin configurar');
+}
+function geoSetup() {
+    if (document.getElementById('geoSettingsPanel')) return;
+    const panel = document.createElement('div');
+    panel.id = 'geoSettingsPanel';
+    panel.className = 'stop';
+    panel.innerHTML = '<b>Configuración de recorridos</b><div class="form">' +
+        '<label>Consumo (L/100 km)<input id="geoConsumption" type="number" min="0.1" step="0.1"></label>' +
+        '<label>Combustible ($/L)<input id="geoFuelPrice" type="number" min="0" step="0.01" placeholder="Sin configurar"></label>' +
+        '<label>Latitud depósito<input id="geoDepotLat" type="number" step="any"></label>' +
+        '<label>Longitud depósito<input id="geoDepotLng" type="number" step="any"></label>' +
+        '<label>Nombre del depósito<input id="geoDepotName"></label></div>' +
+        '<button type="button" id="geoSaveSettings">Guardar configuración</button>';
+    document.querySelector('#stops')?.before(panel);
+    document.querySelector('#geoConsumption').value = geoSettings.consumption || 12;
+    document.querySelector('#geoFuelPrice').value = geoSettings.fuelPrice || '';
+    document.querySelector('#geoDepotLat').value = DEPOT.lat;
+    document.querySelector('#geoDepotLng').value = DEPOT.lng;
+    document.querySelector('#geoDepotName').value = DEPOT.name;
+    document.querySelector('#geoSaveSettings').onclick = () => {
+        const lat = Number(document.querySelector('#geoDepotLat').value);
+        const lng = Number(document.querySelector('#geoDepotLng').value);
+        const consumption = Number(document.querySelector('#geoConsumption').value);
+        const fuelPrice = document.querySelector('#geoFuelPrice').value;
+        if (!Number.isFinite(lat) || Math.abs(lat)>90 || !Number.isFinite(lng) || Math.abs(lng)>180 || consumption<=0) {
+            toast('Revisá las coordenadas y el consumo'); return;
+        }
+        Object.assign(geoSettings, {lat,lng,consumption,fuelPrice,depotName:document.querySelector('#geoDepotName').value});
+        Object.assign(DEPOT, {lat,lng,name:geoSettings.depotName});
+        localStorage.setItem('waiparaGeoSettings',JSON.stringify(geoSettings));
+        drawMap(); toast('Configuración guardada en este navegador');
+    };
+}
 
 const ROUTE_COLORS = [
     '#1769d2', '#d64545', '#1f9d60', '#8b5cf6', '#d97706',
@@ -2041,6 +2080,7 @@ let routeMarkers = new Map();
 let routeVisibility = new Map();
 let routeSummaries = new Map();
 let optimizedRoutes = null;
+const excludedGeoOrders = new Set();
 
 
 function initMap() {
@@ -2074,14 +2114,14 @@ function mapped() {
 
 
 function routeKey(p) {
-    return p.fecha_entrega || 'SIN FECHA';
+    return (p.fecha_entrega || 'SIN FECHA') + ' · ' + (p.transportista || 'Sin transportista');
 }
 
 
 function mapGroups() {
     const groups = new Map();
 
-    mapped().forEach(p => {
+    mapped().filter(p => !excludedGeoOrders.has(String(p.id))).forEach(p => {
         const k = routeKey(p);
 
         if (!groups.has(k)) {
@@ -2171,7 +2211,7 @@ function routeCard(key, color, orders, details = '') {
 
             ${orders.map((p, i) => `
                 <div>
-                    ${i + 1}. #${esc(p.numero)}
+                    <label><input type="checkbox" data-geo-order="${esc(String(p.id))}" ${excludedGeoOrders.has(String(p.id)) ? '' : 'checked'}> ${i + 1}. #${esc(p.numero)}
                     · ${esc(nameOf('clientes', p.cliente_id))}
                     · ${Number(
                         p.__bultos ??
@@ -2179,7 +2219,7 @@ function routeCard(key, color, orders, details = '') {
                             (s, x) => s + (+x.cantidad || 0),
                             0
                         )
-                    ).toLocaleString('es-AR')} bultos
+                    ).toLocaleString('es-AR')} bultos</label>
                 </div>
             `).join('')}
         </div>
@@ -2215,6 +2255,7 @@ function drawMap() {
         }).addTo(map).bindPopup(DEPOT.name)
     );
 
+    geoSetup();
     const groups = optimizedRoutes || mapGroups();
 
     $('#stops').innerHTML = `
@@ -2321,6 +2362,13 @@ function drawMap() {
             );
         });
 
+    $('#stops').querySelectorAll('[data-geo-order]').forEach(cb => cb.onchange = () => {
+        if (cb.checked) excludedGeoOrders.delete(cb.dataset.geoOrder);
+        else excludedGeoOrders.add(cb.dataset.geoOrder);
+        optimizedRoutes = null;
+        drawMap();
+    });
+
     const pts = [
         [DEPOT.lat, DEPOT.lng],
         ...mapped()
@@ -2343,7 +2391,8 @@ async function requestRoadRoute(key, orders, color) {
 
     const coords = [
         `${DEPOT.lng},${DEPOT.lat}`,
-        ...orders.map(p => `${p.longitud},${p.latitud}`)
+        ...orders.map(p => `${p.longitud},${p.latitud}`),
+        `${DEPOT.lng},${DEPOT.lat}`
     ].join(';');
 
     const j = await fetch(
@@ -2375,8 +2424,9 @@ async function requestRoadRoute(key, orders, color) {
 
     routeSummaries.set(
         key,
-        `${(j.routes[0].distance / 1000).toFixed(1)} km · ` +
-        `${Math.round(j.routes[0].duration / 60)} min`
+        `${(j.routes[0].distance / 1000).toFixed(1)} km ida y vuelta · ` +
+        `${Math.round(j.routes[0].duration / 60)} min · ` +
+        geoFuelSummary(j.routes[0].distance / 1000)
     );
 }
 
@@ -2389,7 +2439,7 @@ $('#route').onclick = async () => {
     const groups = mapGroups();
 
     const keys = [...groups.keys()]
-        .filter(k => k !== 'SIN FECHA')
+        .filter(k => !k.startsWith('SIN FECHA'))
         .sort();
 
     if (!keys.length) {
@@ -2547,9 +2597,9 @@ $('#optimizeRoutes').onclick = async () => {
 
     const scope = $('#optimizeScope')?.value || 'all';
     const dated = mapGroups();
-    if (scope === 'planned') dated.delete('SIN FECHA');
+    if (scope === 'planned') for (const key of [...dated.keys()]) if (key.startsWith('SIN FECHA')) dated.delete(key);
     if (scope === 'unplanned') {
-        for (const key of [...dated.keys()]) if (key !== 'SIN FECHA') dated.delete(key);
+        for (const key of [...dated.keys()]) if (!key.startsWith('SIN FECHA')) dated.delete(key);
     }
 
     if (!dated.size) {
