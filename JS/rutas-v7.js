@@ -45,6 +45,7 @@ function rvDraw(r){
  if(!r.geometria)return toast('Ruta sin geometría calculada');
  initMap();clearMapItems();
  const layer=L.geoJSON(r.geometria,{style:{color:'#1769d2',weight:5}}).addTo(map);
+ L.marker([DEPOT.lat,DEPOT.lng]).addTo(map).bindPopup(DEPOT.name);
  routeLayers.push({routeKey:r.id,layer});map.fitBounds(layer.getBounds().pad(.1));
  $('#rvModal').close();
 }
@@ -70,7 +71,7 @@ async function rvRecalc(id){
 }
 async function rvGenerate(optimize){
  const groups=new Map();
- cache.pedidos.filter(p=>p.fecha_entrega&&p.estado!=='ENTREGADO'&&!rvPickup(p)&&Number.isFinite(+p.latitud)&&Number.isFinite(+p.longitud)&&p.latitud!=null&&p.longitud!=null).forEach(p=>{
+ cache.pedidos.filter(p=>p.fecha_entrega&&!rvPickup(p)&&Number.isFinite(+p.latitud)&&Number.isFinite(+p.longitud)&&p.latitud!=null&&p.longitud!=null).forEach(p=>{
   const key=p.fecha_entrega+'|'+(p.transportista||'Sin asignar');
   if(!groups.has(key))groups.set(key,[]);groups.get(key).push(p);
  });
@@ -79,6 +80,8 @@ async function rvGenerate(optimize){
  let count=0;
  for(const [key,orders] of groups){
   const [fecha,transportista]=key.split('|');
+  const scope=$('#optimizeScope')?.value||'all';
+  if(optimize&&scope==='planned'&&!fecha)continue;
   const trips=optimize?packTrips(orders):[{orders}];
   for(let i=0;i<trips.length;i++){
    const trip=trips[i],viaje=i+1;
