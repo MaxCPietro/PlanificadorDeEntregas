@@ -1289,3 +1289,8 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 .geo-route-filter{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .geo-state-choice{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;cursor:pointer}
 .geo-state-choice input{accent-color:#e87917;margin:0}
+
+#geoStoredRoutes .geo-route-link{appearance:none;border:0;background:none;padding:0;color:#1769d2;text-decoration:underline;text-underline-offset:3px;font:inherit;cursor:pointer}
+#geoStoredRoutes .geo-route-link:hover,#geoStoredRoutes .geo-route-link:focus-visible{color:#e87917}
+#geoStoredRoutes .table-wrap{overflow-x:auto}
+#geoStoredRoutes th{white-space:nowrap}
