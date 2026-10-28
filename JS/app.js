@@ -2176,6 +2176,35 @@ function toggleRoute(key, on) {
 }
 
 
+function routeDisplayName(key) {
+    const raw = key.startsWith('OPT-') ? key.slice(4) : key;
+    const date = raw.split(' · ')[0];
+    if (date === 'SIN FECHA') return 'Sin fecha de entrega';
+    const m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(date);
+    const suffix = key.startsWith('OPT-') ? (raw.match(/Viaje \\d+/)?.[0] || '') : '';
+    return m ? 'R-' + m[3] + m[2] + m[1].slice(2) + (suffix ? ' · ' + suffix : '') : raw;
+}
+
+async function calculateSingleRoute(key, button) {
+    const groups = optimizedRoutes || mapGroups();
+    const orders = groups.get(key);
+    if (!orders?.length || key.includes('SIN FECHA')) {
+        toast('Esta ruta no tiene fecha o pedidos seleccionados'); return;
+    }
+    if (!map) initMap();
+    button.disabled = true;
+    try {
+        routeLayers.filter(x => x.routeKey === key).forEach(x => map.removeLayer(x.layer));
+        routeLayers = routeLayers.filter(x => x.routeKey !== key);
+        const keys = [...groups.keys()];
+        await requestRoadRoute(key, orders, ROUTE_COLORS[keys.indexOf(key) % ROUTE_COLORS.length]);
+        const meta = [...document.querySelectorAll('[data-route-meta]')].find(x => x.dataset.routeMeta === key);
+        if (meta) meta.textContent = orders.length + ' paradas · ' + routeSummaries.get(key);
+        toast('Ruta ' + routeDisplayName(key) + ' calculada');
+    } catch(e) { toast(e.message); }
+    finally { button.disabled = false; }
+}
+
 function routeCard(key, color, orders, details = '') {
     const checked = routeVisibility.get(key) !== false;
 
@@ -2192,17 +2221,10 @@ function routeCard(key, color, orders, details = '') {
                     style="background:${color}"
                 ></span>
 
-                <b>${
-                    key === 'SIN FECHA'
-                        ? 'Sin fecha de entrega'
-                        : key.startsWith('OPT-')
-                            ? esc(key.replace(
-                                'OPT-',
-                                'Distribución sugerida · '
-                            ))
-                            : 'Ruta ' + esc(formatDate(key))
-                }</b>
+                <b>${esc(routeDisplayName(key))}</b>
             </label>
+            <button type="button" data-calc-route="${esc(key)}" title="Calcular únicamente esta ruta" style="font-size:12px;padding:3px 8px;margin-left:8px">Calcular</button>
+            <div class="muted" style="margin:3px 0 5px 24px">Transportista: ${esc(orders[0]?.transportista || 'Sin asignar')}</div>
 
             <div class="muted" data-route-meta="${esc(key)}">
                 ${orders.length} paradas
@@ -2352,6 +2374,10 @@ function drawMap() {
             Editá el pedido o la ficha del cliente.</p>`
         );
     }
+
+    $('#stops').querySelectorAll('[data-calc-route]').forEach(button => {
+        button.onclick = () => calculateSingleRoute(button.dataset.calcRoute, button);
+    });
 
     $('#stops')
         .querySelectorAll('[data-route-check]')
