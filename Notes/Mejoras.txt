@@ -2,14 +2,16 @@ Version 6 (Cambios Menores)
 1) Geolocalización.
     1) Que permita marcar rutas pasadas.
     2) Que estime el gasto en combustible
-    3) que la optimización también calcule el tiempo y el gasto para volver
+    3) que la optimización también calcule el tiempo y el gasto para volver siendo el punto de regreso el deposito de pilar
     4) Mejorar el nombre de las rutas
     5) Tablas con las rutas pasadas y futuras
     6) Mostar rutas por transportista
     7) Mostrar camino de vuelta.
     8) Guardar en base de datos.
+    9) Que pemita marcar y desmarcar pedidos individualmente
 2) Sacar los fitros de arriba y ponerlos donde correspondan en cada subsección.
 3) Base de datos de clientes
+    1) Poder Eliminar Clientes
 4) Que cargue el vendedor automáticamente
 5) Cargar los precios y que los traiga automáticamente.
 7) Cambiar medio de autenticación de Daniel
