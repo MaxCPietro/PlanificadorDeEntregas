@@ -2038,37 +2038,22 @@ function geoFuelSummary(km) {
         (price > 0 ? ' · $ ' + (liters * price).toLocaleString('es-AR', {maximumFractionDigits: 0}) : ' · precio/L sin configurar');
 }
 function geoSetup() {
-    if (document.getElementById('geoSettingsPanel')) return;
-    const panel = document.createElement('div');
-    panel.id = 'geoSettingsPanel';
-    panel.className = 'stop';
-    panel.innerHTML = '<b>Configuración de recorridos</b><div class="form">' +
-        '<label>Consumo (L/100 km)<input id="geoConsumption" type="number" min="0.1" step="0.1"></label>' +
-        '<label>Combustible ($/L)<input id="geoFuelPrice" type="number" min="0" step="0.01" placeholder="Sin configurar"></label>' +
-        '<label>Latitud depósito<input id="geoDepotLat" type="number" step="any"></label>' +
-        '<label>Longitud depósito<input id="geoDepotLng" type="number" step="any"></label>' +
-        '<label>Nombre del depósito<input id="geoDepotName"></label></div>' +
-        '<button type="button" id="geoSaveSettings">Guardar configuración</button>';
-    document.querySelector('#stops')?.before(panel);
-    document.querySelector('#geoConsumption').value = geoSettings.consumption || 12;
-    document.querySelector('#geoFuelPrice').value = geoSettings.fuelPrice || '';
-    document.querySelector('#geoDepotLat').value = DEPOT.lat;
-    document.querySelector('#geoDepotLng').value = DEPOT.lng;
-    document.querySelector('#geoDepotName').value = DEPOT.name;
-    document.querySelector('#geoSaveSettings').onclick = () => {
-        const lat = Number(document.querySelector('#geoDepotLat').value);
-        const lng = Number(document.querySelector('#geoDepotLng').value);
-        const consumption = Number(document.querySelector('#geoConsumption').value);
-        const fuelPrice = document.querySelector('#geoFuelPrice').value;
-        if (!Number.isFinite(lat) || Math.abs(lat)>90 || !Number.isFinite(lng) || Math.abs(lng)>180 || consumption<=0) {
-            toast('Revisá las coordenadas y el consumo'); return;
-        }
-        Object.assign(geoSettings, {lat,lng,consumption,fuelPrice,depotName:document.querySelector('#geoDepotName').value});
-        Object.assign(DEPOT, {lat,lng,name:geoSettings.depotName});
-        localStorage.setItem('waiparaGeoSettings',JSON.stringify(geoSettings));
-        drawMap(); toast('Configuración guardada en este navegador');
-    };
+ const panel=document.getElementById('geoSettingsPanel');
+ if(!panel || panel.dataset.ready) return;
+ panel.dataset.ready='1';
+ panel.innerHTML='<label>L/100 km <input id="geoConsumption" type="number" min="0.1" step="0.1" style="width:65px"></label> <label>Combustible $/L <input id="geoFuelPrice" type="number" min="0" step="0.01" style="width:85px" placeholder="Precio"></label>';
+ panel.querySelector('#geoConsumption').value=geoSettings.consumption||12;
+ panel.querySelector('#geoFuelPrice').value=geoSettings.fuelPrice||'';
+ panel.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{
+  const consumption=Number(panel.querySelector('#geoConsumption').value);
+  const fuelPrice=panel.querySelector('#geoFuelPrice').value;
+  if(!(consumption>0) || (fuelPrice!=='' && Number(fuelPrice)<0)){toast('Revisá los valores');return;}
+  Object.assign(geoSettings,{consumption,fuelPrice});
+  localStorage.setItem('waiparaGeoSettings',JSON.stringify(geoSettings));
+  toast('Configuración guardada localmente');
+ }));
 }
+
 
 const ROUTE_COLORS = [
     '#1769d2', '#d64545', '#1f9d60', '#8b5cf6', '#d97706',
@@ -2080,7 +2065,20 @@ let routeMarkers = new Map();
 let routeVisibility = new Map();
 let routeSummaries = new Map();
 let optimizedRoutes = null;
-const excludedGeoOrders = new Set();
+const GEO_ROUTE_STORAGE='waiparaRoutesV1';
+let savedRouteState={};
+try { savedRouteState=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}'); } catch {}
+const excludedGeoOrders=new Set(savedRouteState.excludedOrderIds||[]);
+function persistGeoRoutes(){
+ const groups=optimizedRoutes||mapGroups();
+ const routes=[...groups].map(([key,orders])=>({
+  key,fecha:key.replace(/^OPT-/,'').split(' · ')[0],
+  transportista:orders[0]?.transportista||null,
+  pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:true,orden:i+1})),
+  resumen:routeSummaries.get(key)||null
+ }));
+ localStorage.setItem(GEO_ROUTE_STORAGE,JSON.stringify({version:1,routes,excludedOrderIds:[...excludedGeoOrders],updated_at:new Date().toISOString()}));
+}
 
 
 function initMap() {
@@ -2284,7 +2282,7 @@ async function calculateSingleRoute(key, button) {
         const keys = [...groups.keys()];
         await requestRoadRoute(key, orders, ROUTE_COLORS[keys.indexOf(key) % ROUTE_COLORS.length]);
         const meta = [...document.querySelectorAll('[data-route-meta]')].find(x => x.dataset.routeMeta === key);
-        if (meta) meta.textContent = orders.length + ' paradas · ' + routeSummaries.get(key);
+        if (meta) meta.textContent = routeSummaries.get(key);
         toast('Ruta ' + routeDisplayName(key) + ' calculada');
     } catch(e) { toast(e.message); }
     finally { button.disabled = false; }
@@ -2294,7 +2292,8 @@ function routeCard(key, color, orders, details = '') {
     const checked = routeVisibility.get(key) !== false;
 
     return `
-        <div class="stop">
+        <div class="stop geo-route-card">
+            <div class="geo-route-head">
             <label class="route-check">
                 <input
                     type="checkbox"
@@ -2308,11 +2307,11 @@ function routeCard(key, color, orders, details = '') {
 
                 <button type="button" data-open-route="${esc(key)}" title="Ver mapa e indicaciones" style="border:0;background:transparent;font-weight:700;cursor:pointer;text-align:left">${esc(routeDisplayName(key))} · ${esc(orders[0]?.transportista || 'Sin asignar')}</button>
             </label>
-            <button type="button" data-calc-route="${esc(key)}" title="Calcular únicamente esta ruta" style="font-size:12px;padding:3px 8px;margin-left:8px">Calcular</button>
+            <button type="button" data-calc-route="${esc(key)}" title="Calcular únicamente esta ruta" class="geo-calc-route" aria-label="Calcular esta ruta">↻</button>
+            </div>
 
             <div class="muted" data-route-meta="${esc(key)}">
-                ${orders.length} paradas
-                ${details ? ' · ' + details : ''}
+                ${details || ''}
             </div>
 
             ${orders.map((p, i) => `
@@ -2479,6 +2478,7 @@ function drawMap() {
         if (cb.checked) excludedGeoOrders.delete(cb.dataset.geoOrder);
         else excludedGeoOrders.add(cb.dataset.geoOrder);
         optimizedRoutes = null;
+        persistGeoRoutes();
         drawMap();
     });
 
@@ -2541,6 +2541,7 @@ async function requestRoadRoute(key, orders, color) {
         `${Math.round(j.routes[0].duration / 60)} min · ` +
         geoFuelSummary(j.routes[0].distance / 1000)
     );
+    persistGeoRoutes();
 }
 
 
@@ -2584,7 +2585,6 @@ $('#route').onclick = async () => {
 
             if (meta) {
                 meta.textContent =
-                    `${groups.get(k).length} paradas · ` +
                     `${routeSummaries.get(k)}`;
             }
         }
@@ -2740,6 +2740,7 @@ $('#optimizeRoutes').onclick = async () => {
     }
 
     optimizedRoutes = optimized;
+    persistGeoRoutes();
 
     routeVisibility.clear();
     routeSummaries.clear();
