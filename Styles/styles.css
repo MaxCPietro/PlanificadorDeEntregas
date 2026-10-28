@@ -1274,3 +1274,6 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 .geo-route-filter select{max-width:200px;padding:6px 9px}
 .geo-order-tooltip{cursor:help;text-decoration:underline dotted;text-underline-offset:3px}
 .geo-order-tooltip:hover,.geo-order-tooltip:focus{color:#e87917}
+
+#geoStoredRoutes button.geo-order-tooltip{appearance:none;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+#geoStoredRoutes button.geo-order-tooltip:hover,#geoStoredRoutes button.geo-order-tooltip:focus-visible{color:#e87917}
