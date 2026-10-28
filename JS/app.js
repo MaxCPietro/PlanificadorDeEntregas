@@ -2074,10 +2074,21 @@ function persistGeoRoutes(){
  const routes=[...groups].map(([key,orders])=>({
   key,fecha:key.replace(/^OPT-/,'').split(' · ')[0],
   transportista:orders[0]?.transportista||null,
-  pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:true,orden:i+1})),
+  pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:!excludedGeoOrders.has(String(p.id)),orden:i+1})),
   resumen:routeSummaries.get(key)||null
  }));
  localStorage.setItem(GEO_ROUTE_STORAGE,JSON.stringify({version:1,routes,excludedOrderIds:[...excludedGeoOrders],updated_at:new Date().toISOString()}));
+ renderStoredRoutes();
+}
+
+function renderStoredRoutes(){
+ const host=document.getElementById('geoStoredRoutes');
+ if(!host)return;
+ let state={};
+ try{state=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}')}catch{}
+ const routes=state.routes||[];
+ const rows=routes.map(r=>'<tr><td>'+esc(routeDisplayName(r.key))+'</td><td>'+esc(r.fecha||'—')+'</td><td>'+esc(r.transportista||'—')+'</td><td>'+r.pedidos.filter(p=>p.incluido).length+'</td><td>'+r.pedidos.filter(p=>!p.incluido).length+'</td><td>'+esc(r.resumen||'Sin calcular')+'</td></tr>').join('');
+ host.innerHTML='<h3>Rutas en LocalStorage</h3>'+(rows?'<div class="table-wrap"><table><thead><tr><th>Ruta</th><th>Fecha</th><th>Transportista</th><th>Incluidos</th><th>Excluidos</th><th>Resumen</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<p class="muted">Sin rutas guardadas</p>');
 }
 
 
@@ -2119,7 +2130,7 @@ function routeKey(p) {
 function mapGroups() {
     const groups = new Map();
 
-    mapped().filter(p => !excludedGeoOrders.has(String(p.id))).forEach(p => {
+    mapped().forEach(p => {
         const k = routeKey(p);
 
         if (!groups.has(k)) {
@@ -2178,7 +2189,7 @@ let routeDetailMap = null;
 let routeDetailRequest = 0;
 async function openRouteDetails(key) {
     const groups = optimizedRoutes || mapGroups();
-    const orders = groups.get(key) || [];
+    const orders = (groups.get(key) || []).filter(p=>!excludedGeoOrders.has(String(p.id)));
     if (!orders.length) { toast('No hay pedidos incluidos en esta ruta'); return; }
     let dialog = document.getElementById('geoRouteDialog');
     if (!dialog) {
@@ -2270,8 +2281,8 @@ function routeDisplayName(key) {
 
 async function calculateSingleRoute(key, button) {
     const groups = optimizedRoutes || mapGroups();
-    const orders = groups.get(key);
-    if (!orders?.length || key.includes('SIN FECHA')) {
+    const orders = (groups.get(key)||[]).filter(p=>!excludedGeoOrders.has(String(p.id)));
+    if (!orders.length || key.includes('SIN FECHA')) {
         toast('Esta ruta no tiene fecha o pedidos seleccionados'); return;
     }
     if (!map) initMap();
@@ -2315,7 +2326,7 @@ function routeCard(key, color, orders, details = '') {
             </div>
 
             ${orders.map((p, i) => `
-                <div>
+                <div class="geo-order-row ${excludedGeoOrders.has(String(p.id)) ? 'geo-order-excluded' : ''}">
                     <label><input type="checkbox" data-geo-order="${esc(String(p.id))}" ${excludedGeoOrders.has(String(p.id)) ? '' : 'checked'}> ${i + 1}. #${esc(p.numero)}
                     · ${esc(nameOf('clientes', p.cliente_id))}
                     · ${Number(
@@ -2361,6 +2372,7 @@ function drawMap() {
     );
 
     geoSetup();
+    renderStoredRoutes();
     const groups = optimizedRoutes || mapGroups();
 
     $('#stops').innerHTML = `
@@ -2426,6 +2438,7 @@ function drawMap() {
                 · ${esc(p.estado)}
             `);
 
+            if (excludedGeoOrders.has(String(p.id))) m.setOpacity(0.25);
             if (visible) m.addTo(map);
 
             ms.push(m);
@@ -2500,6 +2513,7 @@ function drawMap() {
    ============================================================ */
 
 async function requestRoadRoute(key, orders, color) {
+    orders=orders.filter(p=>!excludedGeoOrders.has(String(p.id)));
     if (!orders.length) return;
 
     const coords = [
@@ -2550,7 +2564,7 @@ $('#route').onclick = async () => {
 
     optimizedRoutes = null;
 
-    const groups = mapGroups();
+    const groups = new Map([...mapGroups()].map(([k,ps])=>[k,ps.filter(p=>!excludedGeoOrders.has(String(p.id)))]).filter(([,ps])=>ps.length));
 
     const keys = [...groups.keys()]
         .filter(k => !k.startsWith('SIN FECHA'))
@@ -2709,7 +2723,7 @@ $('#optimizeRoutes').onclick = async () => {
     if (!map) initMap();
 
     const scope = $('#optimizeScope')?.value || 'all';
-    const dated = mapGroups();
+    const dated = new Map([...mapGroups()].map(([k,ps])=>[k,ps.filter(p=>!excludedGeoOrders.has(String(p.id)))]).filter(([,ps])=>ps.length));
     if (scope === 'planned') for (const key of [...dated.keys()]) if (key.startsWith('SIN FECHA')) dated.delete(key);
     if (scope === 'unplanned') {
         for (const key of [...dated.keys()]) if (!key.startsWith('SIN FECHA')) dated.delete(key);
