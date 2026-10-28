@@ -2071,12 +2071,15 @@ try { savedRouteState=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}');
 const excludedGeoOrders=new Set(savedRouteState.excludedOrderIds||[]);
 function persistGeoRoutes(){
  const groups=optimizedRoutes||mapGroups();
- const routes=[...groups].map(([key,orders])=>({
+ const previous=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}').routes||[];
+ const current=[...groups].map(([key,orders])=>({
   key,fecha:key.replace(/^OPT-/,'').split(' · ')[0],
   transportista:orders[0]?.transportista||null,
   pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:!excludedGeoOrders.has(String(p.id)),orden:i+1})),
   resumen:routeSummaries.get(key)||null
  }));
+ const ids=new Set(current.map(r=>r.key));
+ const routes=[...current,...previous.filter(r=>!ids.has(r.key))];
  localStorage.setItem(GEO_ROUTE_STORAGE,JSON.stringify({version:1,routes,excludedOrderIds:[...excludedGeoOrders],updated_at:new Date().toISOString()}));
  renderStoredRoutes();
 }
@@ -2094,7 +2097,8 @@ function renderStoredRoutes(){
   if(date===today)return ['EN REPARTO','En reparto'];
   return ['PROGRAMADO','Planificado'];
  };
- const rows=routes.map(r=>{
+ const sort=window.geoRouteSort||{column:'fecha',asc:false};
+ const records=routes.map(r=>{
   const orders=(r.pedidos||[]).map(link=>{
    const p=cache.pedidos.find(p=>String(p.id)===String(link.pedido_id));
    return p?{...p,__included:link.incluido!==false,__order:link.orden}:null;
@@ -2102,9 +2106,21 @@ function renderStoredRoutes(){
   const stops=groupedStops(orders.filter(p=>p.__included));
   const [status,label]=statusFor(r.fecha);
   const numbers=orders.map(p=>'#'+esc(p.numero)+(p.__included?'':' (excluido)')).join(', ');
-  return '<tr><td>'+esc(routeDisplayName(r.key))+'</td><td>'+esc(r.fecha||'—')+'</td><td>'+esc(r.transportista||'—')+'</td><td>'+stops.length+'</td><td>'+numbers+'</td><td><span class="status-badge status-'+status.replaceAll(' ','-')+'">'+label+'</span></td><td>'+esc(r.resumen||'Sin calcular')+'</td></tr>';
+  return {ruta:routeDisplayName(r.key),fecha:r.fecha||'',transportista:r.transportista||'',paradas:stops.length,pedidos:numbers,estado:label,resumen:r.resumen||'Sin calcular',status,html:'<tr><td>'+esc(routeDisplayName(r.key))+'</td><td>'+esc(r.fecha||'—')+'</td><td>'+esc(r.transportista||'—')+'</td><td>'+stops.length+'</td><td>'+numbers+'</td><td><span class="status-badge status-'+status.replaceAll(' ','-')+'">'+label+'</span></td><td>'+esc(r.resumen||'Sin calcular')+'</td></tr>';
  }).join('');
- host.innerHTML='<h3>Rutas en LocalStorage</h3>'+(rows?'<div class="table-wrap"><table><thead><tr><th>Ruta</th><th>Fecha</th><th>Transportista</th><th>Paradas</th><th>Pedidos</th><th>Estado</th><th>Resumen</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<p class="muted">Sin rutas guardadas</p>');
+ records.sort((a,b)=>{
+  const av=a[sort.column],bv=b[sort.column];
+  const cmp=typeof av==='number'&&typeof bv==='number'?av-bv:String(av||'').localeCompare(String(bv||''),'es',{numeric:true});
+  return sort.asc?cmp:-cmp;
+ });
+ const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['paradas','Paradas'],['pedidos','Pedidos'],['estado','Estado'],['resumen','Resumen']];
+ const headers=columns.map(([id,label])=>'<th><button type="button" class="geo-sort" data-geo-sort="'+id+'" aria-label="Ordenar por '+label+'">'+label+' '+(sort.column===id?(sort.asc?'▲':'▼'):'↕')+'</button></th>').join('');
+ host.innerHTML='<h3>Rutas en LocalStorage</h3>'+(records.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+records.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">Sin rutas guardadas</p>');
+ host.querySelectorAll('[data-geo-sort]').forEach(btn=>btn.onclick=()=>{
+  const column=btn.dataset.geoSort;
+  window.geoRouteSort={column,asc:sort.column===column?!sort.asc:true};
+  renderStoredRoutes();
+ });
 }
 
 function initMap() {
@@ -2128,7 +2144,6 @@ function initMap() {
 /** Pedidos pendientes con coordenadas válidas. */
 function mapped() {
     return cache.pedidos.filter(p =>
-        !['ENTREGADO'].includes(p.estado) &&
         p.latitud != null &&
         p.longitud != null &&
         Number.isFinite(+p.latitud) &&
@@ -2544,6 +2559,23 @@ async function requestRoadRoute(key, orders, color) {
     persistGeoRoutes();
 }
 
+
+$('#geoRefresh').onclick = async () => {
+ const button=$('#geoRefresh');
+ button.disabled=true;
+ try {
+  await loadAll();
+  optimizedRoutes=null;
+  routeVisibility.clear();
+  routeSummaries.clear();
+  const valid=new Set(cache.pedidos.map(p=>String(p.id)));
+  for(const id of [...excludedGeoOrders])if(!valid.has(id))excludedGeoOrders.delete(id);
+  persistGeoRoutes();
+  drawMap();
+  toast('Mapa actualizado desde los pedidos del calendario');
+ }catch(e){toast('Error al recargar: '+e.message);}
+ finally{button.disabled=false;}
+};
 
 $('#route').onclick = async () => {
     if (!map) initMap();
