@@ -2077,24 +2077,33 @@ function geoRouteIdentity(route) {
  return date+'|'+driver+'|'+orderIds.join(',');
 }
 function dedupeGeoRoutes(routes) {
+ const dateOf=r=>r.fecha||r.key?.replace(/^OPT-/,'').split(' · ')[0]||'SIN FECHA';
+ const driverOf=r=>String(r.transportista||'Sin asignar').trim().toLocaleLowerCase('es');
+ const isOptimized=r=>r.key?.startsWith('OPT-');
  const byIdentity=new Map();
  for(const route of routes){
   const id=geoRouteIdentity(route);
   const prior=byIdentity.get(id);
-  const score=r=>(r.key?.startsWith('OPT-')?4:0)+(r.resumen?2:0);
+  const score=r=>(isOptimized(r)?4:0)+(r.resumen?2:0);
   if(!prior||score(route)>score(prior))byIdentity.set(id,route);
  }
  const unique=[...byIdentity.values()];
- // Si un conjunto de viajes optimizados cubre todos los pedidos de una ruta
- // original, no mostrar además la agrupación original como otro recorrido.
- return unique.filter(original=>{
-  if(original.key?.startsWith('OPT-'))return true;
-  const siblings=unique.filter(r=>r!==original&&r.key?.startsWith('OPT-')&&
-   r.fecha===original.fecha&&String(r.transportista||'').trim().toLowerCase()===String(original.transportista||'').trim().toLowerCase());
-  if(!siblings.length)return true;
-  const optimizedIds=new Set(siblings.flatMap(r=>(r.pedidos||[]).map(p=>String(p.pedido_id))));
-  return !(original.pedidos||[]).every(p=>optimizedIds.has(String(p.pedido_id)));
- });
+ const optimizedByGroup=new Map();
+ for(const r of unique.filter(isOptimized)){
+  const group=dateOf(r)+'|'+driverOf(r);
+  if(!optimizedByGroup.has(group))optimizedByGroup.set(group,new Set());
+  (r.pedidos||[]).forEach(p=>optimizedByGroup.get(group).add(String(p.pedido_id)));
+ }
+ const result=[];
+ for(const route of unique){
+  if(isOptimized(route)){result.push(route);continue;}
+  const group=dateOf(route)+'|'+driverOf(route);
+  const assigned=optimizedByGroup.get(group);
+  if(!assigned){result.push(route);continue;}
+  const remaining=(route.pedidos||[]).filter(p=>!assigned.has(String(p.pedido_id)));
+  if(remaining.length)result.push({...route,pedidos:remaining,resumen:null});
+ }
+ return result;
 }
 
 function persistGeoRoutes(){
