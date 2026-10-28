@@ -2106,8 +2106,8 @@ function renderStoredRoutes(){
   const stops=groupedStops(orders.filter(p=>p.__included));
   const [status,label]=statusFor(r.fecha);
   const numbers=orders.map(p=>'#'+esc(p.numero)+(p.__included?'':' (excluido)')).join(', ');
-  return {ruta:routeDisplayName(r.key),fecha:r.fecha||'',transportista:r.transportista||'',paradas:stops.length,pedidos:numbers,estado:label,resumen:r.resumen||'Sin calcular',status,html:'<tr><td>'+esc(routeDisplayName(r.key))+'</td><td>'+esc(r.fecha||'—')+'</td><td>'+esc(r.transportista||'—')+'</td><td>'+stops.length+'</td><td>'+numbers+'</td><td><span class="status-badge status-'+status.replaceAll(' ','-')+'">'+label+'</span></td><td>'+esc(r.resumen||'Sin calcular')+'</td></tr>';
- }).join('');
+  return {ruta:routeDisplayName(r.key),fecha:r.fecha||'',transportista:r.transportista||'',paradas:stops.length,pedidos:numbers,estado:label,resumen:r.resumen||'Sin calcular',status,html:'<tr><td>'+esc(routeDisplayName(r.key))+'</td><td>'+esc(r.fecha||'—')+'</td><td>'+esc(r.transportista||'—')+'</td><td>'+stops.length+'</td><td>'+numbers+'</td><td><span class="status-badge status-'+status.replaceAll(' ','-')+'">'+label+'</span></td><td>'+esc(r.resumen||'Sin calcular')+'</td></tr>'};
+ });
  records.sort((a,b)=>{
   const av=a[sort.column],bv=b[sort.column];
   const cmp=typeof av==='number'&&typeof bv==='number'?av-bv:String(av||'').localeCompare(String(bv||''),'es',{numeric:true});
