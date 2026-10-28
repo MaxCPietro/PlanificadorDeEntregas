@@ -1277,3 +1277,9 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 
 #geoStoredRoutes button.geo-order-tooltip{appearance:none;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
 #geoStoredRoutes button.geo-order-tooltip:hover,#geoStoredRoutes button.geo-order-tooltip:focus-visible{color:#e87917}
+
+/* Consulta de pedidos desde el historial de rutas: lectura solamente. */
+#orderDlg.geo-order-readonly #deleteOrder,#orderDlg.geo-order-readonly #addLine,#orderDlg.geo-order-readonly #geocodeOrder,#orderDlg.geo-order-readonly #verifyOrderMap,#orderDlg.geo-order-readonly .product-grid button,#orderDlg.geo-order-readonly .actions button.primary{display:none!important}
+#orderDlg.geo-order-readonly #cancelOrder{font-size:0}
+#orderDlg.geo-order-readonly #cancelOrder::after{content:'Cerrar';font-size:14px}
+#orderDlg.geo-order-readonly input:disabled,#orderDlg.geo-order-readonly select:disabled,#orderDlg.geo-order-readonly textarea:disabled{opacity:1;color:inherit;-webkit-text-fill-color:currentColor;cursor:default}
