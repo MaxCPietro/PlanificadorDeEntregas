@@ -330,6 +330,7 @@ async function loadAll() {
     }
 
     await syncDeliveryStatuses();
+    await loadDbGeoRoutes();
     populateSelects();
 }
 
@@ -2066,10 +2067,52 @@ let routeMarkers = new Map();
 let routeVisibility = new Map();
 let routeSummaries = new Map();
 let optimizedRoutes = null;
-const GEO_ROUTE_STORAGE='waiparaRoutesV1';
-let savedRouteState={};
-try { savedRouteState=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}'); } catch {}
-const excludedGeoOrders=new Set(savedRouteState.excludedOrderIds||[]);
+// Las rutas reales se almacenan exclusivamente en Supabase.
+const excludedGeoOrders=new Set();
+let dbGeoRoutes=[];
+async function loadDbGeoRoutes(){
+ if(!sb)return;
+ const [routes,links]=await Promise.all([
+  sb.from('rutas').select('*').order('fecha',{ascending:false}).limit(3000),
+  sb.from('ruta_pedidos').select('*').limit(10000)
+ ]);
+ if(routes.error)throw routes.error;
+ if(links.error)throw links.error;
+ const byId=new Map();
+ for(const link of links.data||[]){
+  if(!byId.has(link.ruta_id))byId.set(link.ruta_id,[]);
+  byId.get(link.ruta_id).push(link);
+ }
+ dbGeoRoutes=(routes.data||[]).map(r=>{
+  const km=r.distancia_km==null?null:Number(r.distancia_km)+Number(r.retorno_km||0);
+  const min=r.duracion_min==null?null:Number(r.duracion_min)+Number(r.retorno_min||0);
+  const liters=km==null?null:km*Number(r.consumo_l_100km||12)/100;
+  const cost=liters==null||r.precio_litro==null?null:liters*Number(r.precio_litro);
+  const resumen=km==null?'':km.toFixed(1)+' km ida y vuelta · '+Math.round(min||0)+' min · '+liters.toFixed(1)+' L estimados'+(cost==null?' · precio/L sin configurar':' · $ '+cost.toLocaleString('es-AR',{maximumFractionDigits:0}));
+  return {...r,key:r.fecha+' · '+r.transportista,
+   pedidos:(byId.get(r.id)||[]).sort((x,y)=>x.orden-y.orden),resumen};
+ });
+ renderStoredRoutes();
+}
+async function saveRealRoute(key,orders,route){
+ if(key.startsWith('OPT-'))return; // Optimización: simulación sin persistencia.
+ const date=orders[0]?.fecha_entrega;
+ const driver=orders[0]?.transportista||'Sin asignar';
+ if(!date)throw Error('No se guardan rutas sin fecha');
+ const all=cache.pedidos.filter(p=>p.fecha_entrega===date&&(p.transportista||'Sin asignar')===driver);
+ if(all.some(p=>p.estado==='ENTREGADO'))throw Error('Ruta histórica con pedidos entregados: no se modifica');
+ const {error}=await sb.rpc('waipara_guardar_ruta_real',{
+  p_fecha:date,p_transportista:driver,p_viaje:1,
+  p_pedidos:all.map((p,i)=>({pedido_id:p.id,orden:i+1,incluido:!excludedGeoOrders.has(String(p.id))})),
+  p_distancia_km:route.distance/1000,p_duracion_min:route.duration/60,
+  p_retorno_km:0,p_retorno_min:0,
+  p_consumo_l_100km:Number(geoSettings.consumption)||12,
+  p_precio_litro:Number(geoSettings.fuelPrice)>0?Number(geoSettings.fuelPrice):null,
+  p_instrucciones:[],p_geometria:route.geometry
+ });
+ if(error)throw Error('Supabase: '+error.message);
+ await loadDbGeoRoutes();
+}
 function geoRouteIdentity(route) {
  const date=route.fecha||route.key?.replace(/^OPT-/,'').split(' · ')[0]||'SIN FECHA';
  const driver=String(route.transportista||'Sin asignar').trim().toLocaleLowerCase('es');
@@ -2107,29 +2150,7 @@ function dedupeGeoRoutes(routes) {
 }
 
 function persistGeoRoutes(){
- // La fuente de verdad es el pedido actualizado, no su agrupación antigua en LocalStorage.
- let previous=[];
- try{previous=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}').routes||[]}catch{}
- const oldByKey=new Map(previous.filter(r=>!r.key?.startsWith('OPT-')).map(r=>[r.key,r]));
- const groups=new Map();
- cache.pedidos.forEach(p=>{
-  if(!p.id)return;
-  const key=routeKey(p);
-  if(!groups.has(key))groups.set(key,[]);
-  groups.get(key).push(p);
- });
- const routes=[...groups].map(([key,orders])=>{
-  const old=oldByKey.get(key);
-  const oldIds=new Set((old?.pedidos||[]).map(p=>String(p.pedido_id)));
-  const sameOrders=oldIds.size===orders.length&&orders.every(p=>oldIds.has(String(p.id)));
-  return {
-   key,fecha:orders[0]?.fecha_entrega||'SIN FECHA',
-   transportista:orders[0]?.transportista||null,
-   pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:!excludedGeoOrders.has(String(p.id)),orden:i+1})),
-   resumen:sameOrders?(routeSummaries.get(key)||old?.resumen||null):null
-  };
- });
- localStorage.setItem(GEO_ROUTE_STORAGE,JSON.stringify({version:3,routes,excludedOrderIds:[...excludedGeoOrders],updated_at:new Date().toISOString()}));
+ // Compatibilidad con los eventos de mapa: no se escribe en LocalStorage ni Supabase.
  renderStoredRoutes();
 }
 
@@ -2172,12 +2193,10 @@ async function openStoredGeoOrder(id) {
 function renderStoredRoutes(){
  const host=document.getElementById('geoStoredRoutes');
  if(!host)return;
- let state={};
- try{state=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}')}catch{}
- const routes=(state.routes||[]).filter(r=>!r.key?.startsWith('OPT-')).map(r=>({
+ const routes=dbGeoRoutes.filter(r=>!r.key?.startsWith('OPT-')).map(r=>({
   ...r,pedidos:(r.pedidos||[]).filter(link=>{
    const p=cache.pedidos.find(p=>String(p.id)===String(link.pedido_id));
-   return p&&routeKey(p)===r.key;
+   return !!p;
   })
  })).filter(r=>r.pedidos.length);
  const today=iso(new Date());
@@ -2690,7 +2709,7 @@ async function requestRoadRoute(key, orders, color) {
         `${Math.round(j.routes[0].duration / 60)} min · ` +
         geoFuelSummary(j.routes[0].distance / 1000)
     );
-    persistGeoRoutes();
+    if(!key.startsWith('OPT-'))await saveRealRoute(key,orders,j.routes[0]);
 }
 
 
