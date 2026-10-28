@@ -2176,12 +2176,65 @@ function toggleRoute(key, on) {
 }
 
 
+let routeDetailMap = null;
+async function openRouteDetails(key) {
+    const groups = optimizedRoutes || mapGroups();
+    const orders = groups.get(key) || [];
+    if (!orders.length) { toast('No hay pedidos incluidos en esta ruta'); return; }
+    let dialog = document.getElementById('geoRouteDialog');
+    if (!dialog) {
+        dialog = document.createElement('dialog');
+        dialog.id = 'geoRouteDialog';
+        dialog.style.cssText = 'width:min(1000px,95vw);max-height:92vh;padding:18px;border:1px solid #ddd;border-radius:12px';
+        dialog.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h2 id="geoRouteTitle"></h2><button type="button" id="geoCloseRoute">Cerrar</button></div>' +
+            '<div id="geoRouteSummary"></div><div id="geoDetailMap" style="height:340px;min-height:280px;margin:12px 0;border-radius:8px"></div>' +
+            '<h3>Indicaciones de conducción</h3><div id="geoRouteInstructions" style="max-height:260px;overflow:auto"></div>';
+        document.body.appendChild(dialog);
+        dialog.querySelector('#geoCloseRoute').onclick = () => dialog.close();
+        dialog.addEventListener('close', () => { if (routeDetailMap) {routeDetailMap.remove();routeDetailMap=null;} });
+    }
+    dialog.querySelector('#geoRouteTitle').textContent = routeDisplayName(key) + ' · ' + (orders[0].transportista || 'Sin asignar');
+    dialog.querySelector('#geoRouteSummary').textContent = orders.length + ' paradas · Calculando recorrido completo y regreso al depósito…';
+    dialog.querySelector('#geoRouteInstructions').textContent = 'Consultando instrucciones de circulación…';
+    dialog.showModal();
+    if (routeDetailMap) {routeDetailMap.remove();routeDetailMap=null;}
+    routeDetailMap = L.map('geoDetailMap').setView([DEPOT.lat, DEPOT.lng],11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(routeDetailMap);
+    setTimeout(() => routeDetailMap?.invalidateSize(),100);
+    const points = [DEPOT,...orders.map(p=>({lat:+p.latitud,lng:+p.longitud})),DEPOT];
+    const coords = points.map(p=>p.lng+','+p.lat).join(';');
+    try {
+        const response = await fetch('https://router.project-osrm.org/route/v1/driving/'+coords+'?overview=full&geometries=geojson&steps=true');
+        if (!response.ok) throw Error('Servicio de rutas no disponible');
+        const result = await response.json();
+        if (result.code !== 'Ok' || !result.routes?.[0]) throw Error('No se pudo calcular el recorrido');
+        if (!dialog.open || !routeDetailMap) return;
+        const route = result.routes[0];
+        const line = L.geoJSON(route.geometry,{style:{color:'#1769d2',weight:5}}).addTo(routeDetailMap);
+        routeDetailMap.fitBounds(line.getBounds().pad(0.12));
+        points.forEach((p,i)=>L.marker([p.lat,p.lng]).addTo(routeDetailMap).bindPopup(i===0||i===points.length-1?'Depósito Pilar':('#'+orders[i-1].numero+' · '+nameOf('clientes',orders[i-1].cliente_id))));
+        dialog.querySelector('#geoRouteSummary').textContent = orders.length+' paradas · '+(route.distance/1000).toFixed(1)+' km ida y vuelta · '+Math.round(route.duration/60)+' min · '+geoFuelSummary(route.distance/1000);
+        const instructions = [];
+        route.legs.forEach((leg,i)=>{
+            const target = i===route.legs.length-1?'Regreso al depósito':'Parada '+(i+1)+' · #'+orders[i].numero;
+            instructions.push('<h4>'+esc(target)+' · '+(leg.distance/1000).toFixed(1)+' km · '+Math.round(leg.duration/60)+' min</h4>');
+            leg.steps.forEach(step=>{
+                const maneuver=step.maneuver || {};
+                const types={depart:'Salir',arrive:'Llegar',turn:'Girar',continue:'Continuar',merge:'Incorporarse',fork:'Tomar bifurcación','on ramp':'Tomar acceso',roundabout:'Rotonda','new name':'Continuar',end:'Finalizar'};
+                const modifiers={left:'a la izquierda',right:'a la derecha',straight:'recto','slight left':'levemente a la izquierda','slight right':'levemente a la derecha',uturn:'en U'};
+                instructions.push('<div style="padding:5px 0;border-bottom:1px solid #eee">'+esc((types[maneuver.type]||'Seguir')+' '+(modifiers[maneuver.modifier]||'')+(step.name?' por '+step.name:''))+' · '+Math.round(step.distance)+' m</div>');
+            });
+        });
+        dialog.querySelector('#geoRouteInstructions').innerHTML = instructions.join('');
+    } catch(e) { if(dialog.open) dialog.querySelector('#geoRouteInstructions').textContent = e.message; }
+}
+
 function routeDisplayName(key) {
     const raw = key.startsWith('OPT-') ? key.slice(4) : key;
     const date = raw.split(' · ')[0];
     if (date === 'SIN FECHA') return 'Sin fecha de entrega';
-    const m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(date);
-    const suffix = key.startsWith('OPT-') ? (raw.match(/Viaje \\d+/)?.[0] || '') : '';
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    const suffix = key.startsWith('OPT-') ? (raw.match(/Viaje \d+/)?.[0] || '') : '';
     return m ? 'R-' + m[3] + m[2] + m[1].slice(2) + (suffix ? ' · ' + suffix : '') : raw;
 }
 
@@ -2221,10 +2274,9 @@ function routeCard(key, color, orders, details = '') {
                     style="background:${color}"
                 ></span>
 
-                <b>${esc(routeDisplayName(key))}</b>
+                <button type="button" data-open-route="${esc(key)}" title="Ver mapa e indicaciones" style="border:0;background:transparent;font-weight:700;cursor:pointer;text-align:left">${esc(routeDisplayName(key))} · ${esc(orders[0]?.transportista || 'Sin asignar')}</button>
             </label>
             <button type="button" data-calc-route="${esc(key)}" title="Calcular únicamente esta ruta" style="font-size:12px;padding:3px 8px;margin-left:8px">Calcular</button>
-            <div class="muted" style="margin:3px 0 5px 24px">Transportista: ${esc(orders[0]?.transportista || 'Sin asignar')}</div>
 
             <div class="muted" data-route-meta="${esc(key)}">
                 ${orders.length} paradas
@@ -2375,6 +2427,9 @@ function drawMap() {
         );
     }
 
+    $('#stops').querySelectorAll('[data-open-route]').forEach(button => {
+        button.onclick = () => openRouteDetails(button.dataset.openRoute);
+    });
     $('#stops').querySelectorAll('[data-calc-route]').forEach(button => {
         button.onclick = () => calculateSingleRoute(button.dataset.calcRoute, button);
     });
