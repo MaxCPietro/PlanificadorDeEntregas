@@ -2221,11 +2221,11 @@ function renderStoredRoutes(){
   const cells=[
    '<button type="button" class="geo-route-link" data-stored-route="'+index+'" title="Ver detalle de '+esc(routeName)+'">'+esc(routeName)+'</button>',
    esc(geoDisplayDate(r.fecha)),esc(r.transportista||'—'),String(stops.length),
-   numbers,String(totalBultos),formatNumber(km),formatNumber(liters),
+   numbers,String(totalBultos),'<span class="status-badge status-'+status.replaceAll(' ','-')+'">'+esc(label)+'</span>',formatNumber(km),formatNumber(liters),
    cost==null?'':'$ '+cost.toLocaleString('es-AR',{maximumFractionDigits:0}),
    esc(summary)
   ];
-  return {ruta:routeName,fecha:r.fecha||'',transportista:r.transportista||'',paradas:stops.length,pedidos:orders.length,bultos:totalBultos,km,litros:liters,costo:cost,resumen:summary,status,html:'<tr>'+cells.map(c=>'<td>'+c+'</td>').join('')+'</tr>',route:r,orders};
+  return {ruta:routeName,fecha:r.fecha||'',transportista:r.transportista||'',paradas:stops.length,pedidos:orders.length,bultos:totalBultos,estado:label,km,litros:liters,costo:cost,resumen:summary,status,html:'<tr>'+cells.map(c=>'<td>'+c+'</td>').join('')+'</tr>',route:r,orders};
  });
  const filteredRecords=records.filter(r=>selectedStatuses.has(r.status));
  filteredRecords.sort((x,y)=>{
@@ -2234,7 +2234,7 @@ function renderStoredRoutes(){
   const cmp=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'es',{numeric:true});
   return sort.asc?cmp:-cmp;
  });
- const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['paradas','Paradas'],['pedidos','# Pedidos'],['bultos','Σ Bultos'],['km','Σ Km Aprox'],['litros','Σ Litros Aprox'],['costo','$ Aprox'],['resumen','Resumen']];
+ const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['paradas','Paradas'],['pedidos','# Pedidos'],['bultos','Σ Bultos'],['estado','Estado'],['km','Σ Km Aprox'],['litros','Σ Litros Aprox'],['costo','$ Aprox'],['resumen','Resumen']];
  const headers=columns.map(([id,label])=>'<th><button type="button" class="geo-sort" data-geo-sort="'+id+'" aria-label="Ordenar por '+label+'">'+label+' '+(sort.column===id?(sort.asc?'▲':'▼'):'↕')+'</button></th>').join('');
  const statusOptions=[['PENDIENTE','Sin planificar'],['PROGRAMADO','Planificado'],['EN REPARTO','En reparto'],['ENTREGADO','Entregado']];
  const filterHtml='<div class="geo-route-filter"><span>Estados:</span>'+statusOptions.map(([id,label])=>'<label class="geo-state-choice"><input type="checkbox" data-geo-status="'+id+'" '+(selectedStatuses.has(id)?'checked':'')+'> '+label+'</label>').join('')+'</div>';
