@@ -2087,10 +2087,25 @@ function renderStoredRoutes(){
  let state={};
  try{state=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}')}catch{}
  const routes=state.routes||[];
- const rows=routes.map(r=>'<tr><td>'+esc(routeDisplayName(r.key))+'</td><td>'+esc(r.fecha||'—')+'</td><td>'+esc(r.transportista||'—')+'</td><td>'+r.pedidos.filter(p=>p.incluido).length+'</td><td>'+r.pedidos.filter(p=>!p.incluido).length+'</td><td>'+esc(r.resumen||'Sin calcular')+'</td></tr>').join('');
- host.innerHTML='<h3>Rutas en LocalStorage</h3>'+(rows?'<div class="table-wrap"><table><thead><tr><th>Ruta</th><th>Fecha</th><th>Transportista</th><th>Incluidos</th><th>Excluidos</th><th>Resumen</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<p class="muted">Sin rutas guardadas</p>');
+ const today=iso(new Date());
+ const statusFor=date=>{
+  if(!date || date==='SIN FECHA' || !/^\d{4}-\d{2}-\d{2}$/.test(date))return ['PENDIENTE','Sin planificar'];
+  if(date<today)return ['ENTREGADO','Entregado'];
+  if(date===today)return ['EN REPARTO','En reparto'];
+  return ['PROGRAMADO','Planificado'];
+ };
+ const rows=routes.map(r=>{
+  const orders=(r.pedidos||[]).map(link=>{
+   const p=cache.pedidos.find(p=>String(p.id)===String(link.pedido_id));
+   return p?{...p,__included:link.incluido!==false,__order:link.orden}:null;
+  }).filter(Boolean).sort((a,b)=>(a.__order||0)-(b.__order||0));
+  const stops=groupedStops(orders.filter(p=>p.__included));
+  const [status,label]=statusFor(r.fecha);
+  const numbers=orders.map(p=>'#'+esc(p.numero)+(p.__included?'':' (excluido)')).join(', ');
+  return '<tr><td>'+esc(routeDisplayName(r.key))+'</td><td>'+esc(r.fecha||'—')+'</td><td>'+esc(r.transportista||'—')+'</td><td>'+stops.length+'</td><td>'+numbers+'</td><td><span class="status-badge status-'+status.replaceAll(' ','-')+'">'+label+'</span></td><td>'+esc(r.resumen||'Sin calcular')+'</td></tr>';
+ }).join('');
+ host.innerHTML='<h3>Rutas en LocalStorage</h3>'+(rows?'<div class="table-wrap"><table><thead><tr><th>Ruta</th><th>Fecha</th><th>Transportista</th><th>Paradas</th><th>Pedidos</th><th>Estado</th><th>Resumen</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<p class="muted">Sin rutas guardadas</p>');
 }
-
 
 function initMap() {
     if (map) return;
