@@ -2144,6 +2144,7 @@ function initMap() {
 /** Pedidos pendientes con coordenadas válidas. */
 function mapped() {
     return cache.pedidos.filter(p =>
+        p.estado !== 'ENTREGADO' &&
         p.latitud != null &&
         p.longitud != null &&
         Number.isFinite(+p.latitud) &&
