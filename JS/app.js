@@ -1493,6 +1493,7 @@ function newOrder() {
 
 
 async function editOrder(id) {
+    setGeoOrderReadOnly(false);
     const p = cache.pedidos.find(x => x.id === id);
 
     if (!p) return;
@@ -2118,6 +2119,20 @@ function geoDisplayDate(value) {
  const months=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
  return String(day).padStart(2,'0')+'-'+months[month-1]+'-'+String(year).slice(-2);
 }
+function setGeoOrderReadOnly(enabled) {
+ const dlg=document.getElementById('orderDlg');
+ if(!dlg)return;
+ dlg.classList.toggle('geo-order-readonly',enabled);
+ const form=document.getElementById('orderForm');
+ form.querySelectorAll('input,select,textarea').forEach(el=>{
+  if(enabled){el.dataset.geoPriorDisabled=el.disabled?'1':'0';el.disabled=true;}
+  else if(el.dataset.geoPriorDisabled!==undefined){
+   el.disabled=el.dataset.geoPriorDisabled==='1';
+   delete el.dataset.geoPriorDisabled;
+  }
+ });
+}
+document.getElementById('orderDlg')?.addEventListener('close',()=>setGeoOrderReadOnly(false));
 async function openStoredGeoOrder(id) {
  try {
   const {data,error}=await sb.from('pedidos').select('*').eq('id',id).single();
@@ -2130,6 +2145,8 @@ async function openStoredGeoOrder(id) {
   if(itemsError)throw itemsError;
   cache.pedido_productos=cache.pedido_productos.filter(p=>String(p.pedido_id)!==String(id)).concat(items||[]);
   editOrder(data.id);
+  document.getElementById('orderTitle').textContent='Consultar pedido #'+data.numero;
+  setGeoOrderReadOnly(true);
  }catch(e){toast('No se pudo recuperar el pedido: '+e.message);}
 }
 function renderStoredRoutes(){
