@@ -2107,20 +2107,29 @@ function dedupeGeoRoutes(routes) {
 }
 
 function persistGeoRoutes(){
- // Persistir exclusivamente la planificación original. La optimización es simulación.
- const groups=mapGroups();
+ // La fuente de verdad es el pedido actualizado, no su agrupación antigua en LocalStorage.
  let previous=[];
  try{previous=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}').routes||[]}catch{}
- const current=[...groups].map(([key,orders])=>({
-  key,fecha:key.split(' · ')[0],
-  transportista:orders[0]?.transportista||null,
-  pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:!excludedGeoOrders.has(String(p.id)),orden:i+1})),
-  resumen:routeSummaries.get(key)||null
- }));
- const ids=new Set(current.map(r=>r.key));
- const historical=previous.filter(r=>!r.key?.startsWith('OPT-')&&!ids.has(r.key));
- const routes=[...current,...historical];
- localStorage.setItem(GEO_ROUTE_STORAGE,JSON.stringify({version:2,routes,excludedOrderIds:[...excludedGeoOrders],updated_at:new Date().toISOString()}));
+ const oldByKey=new Map(previous.filter(r=>!r.key?.startsWith('OPT-')).map(r=>[r.key,r]));
+ const groups=new Map();
+ cache.pedidos.forEach(p=>{
+  if(!p.id)return;
+  const key=routeKey(p);
+  if(!groups.has(key))groups.set(key,[]);
+  groups.get(key).push(p);
+ });
+ const routes=[...groups].map(([key,orders])=>{
+  const old=oldByKey.get(key);
+  const oldIds=new Set((old?.pedidos||[]).map(p=>String(p.pedido_id)));
+  const sameOrders=oldIds.size===orders.length&&orders.every(p=>oldIds.has(String(p.id)));
+  return {
+   key,fecha:orders[0]?.fecha_entrega||'SIN FECHA',
+   transportista:orders[0]?.transportista||null,
+   pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:!excludedGeoOrders.has(String(p.id)),orden:i+1})),
+   resumen:sameOrders?(routeSummaries.get(key)||old?.resumen||null):null
+  };
+ });
+ localStorage.setItem(GEO_ROUTE_STORAGE,JSON.stringify({version:3,routes,excludedOrderIds:[...excludedGeoOrders],updated_at:new Date().toISOString()}));
  renderStoredRoutes();
 }
 
@@ -2165,7 +2174,13 @@ function renderStoredRoutes(){
  if(!host)return;
  let state={};
  try{state=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}')}catch{}
- const routes=(state.routes||[]).filter(r=>!r.key?.startsWith('OPT-'));
+ const routes=(state.routes||[]).filter(r=>!r.key?.startsWith('OPT-')).map(r=>({
+  ...r,
+  pedidos:(r.pedidos||[]).filter(link=>{
+   const p=cache.pedidos.find(p=>String(p.id)===String(link.pedido_id));
+   return p&&routeKey(p)===r.key;
+  })
+ })).filter(r=>r.pedidos.length);
  const today=iso(new Date());
  const statusFor=date=>{
   if(!date || date==='SIN FECHA' || !/^\d{4}-\d{2}-\d{2}$/.test(date))return ['PENDIENTE','Sin planificar'];
