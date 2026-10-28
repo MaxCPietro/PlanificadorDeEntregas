@@ -2069,9 +2069,27 @@ const GEO_ROUTE_STORAGE='waiparaRoutesV1';
 let savedRouteState={};
 try { savedRouteState=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}'); } catch {}
 const excludedGeoOrders=new Set(savedRouteState.excludedOrderIds||[]);
+function geoRouteIdentity(route) {
+ const date=route.fecha||route.key?.replace(/^OPT-/,'').split(' · ')[0]||'SIN FECHA';
+ const driver=String(route.transportista||'Sin asignar').trim().toLocaleLowerCase('es');
+ const orderIds=[...(route.pedidos||[])].map(p=>String(p.pedido_id)).sort();
+ return date+'|'+driver+'|'+orderIds.join(',');
+}
+function dedupeGeoRoutes(routes) {
+ const byIdentity=new Map();
+ for(const route of routes){
+  const id=geoRouteIdentity(route);
+  const prior=byIdentity.get(id);
+  // Priorizar rutas optimizadas y métricas calculadas sobre borradores originales.
+  const score=r=>(r.key?.startsWith('OPT-')?4:0)+(r.resumen?2:0);
+  if(!prior || score(route)>score(prior))byIdentity.set(id,route);
+ }
+ return [...byIdentity.values()];
+}
 function persistGeoRoutes(){
  const groups=optimizedRoutes||mapGroups();
- const previous=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}').routes||[];
+ let previous=[];
+ try{previous=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}').routes||[]}catch{}
  const current=[...groups].map(([key,orders])=>({
   key,fecha:key.replace(/^OPT-/,'').split(' · ')[0],
   transportista:orders[0]?.transportista||null,
@@ -2079,7 +2097,7 @@ function persistGeoRoutes(){
   resumen:routeSummaries.get(key)||null
  }));
  const ids=new Set(current.map(r=>r.key));
- const routes=[...current,...previous.filter(r=>!ids.has(r.key))];
+ const routes=dedupeGeoRoutes([...current,...previous.filter(r=>!ids.has(r.key))]);
  localStorage.setItem(GEO_ROUTE_STORAGE,JSON.stringify({version:1,routes,excludedOrderIds:[...excludedGeoOrders],updated_at:new Date().toISOString()}));
  renderStoredRoutes();
 }
@@ -2089,7 +2107,7 @@ function renderStoredRoutes(){
  if(!host)return;
  let state={};
  try{state=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}')}catch{}
- const routes=state.routes||[];
+ const routes=dedupeGeoRoutes(state.routes||[]);
  const today=iso(new Date());
  const statusFor=date=>{
   if(!date || date==='SIN FECHA' || !/^\d{4}-\d{2}-\d{2}$/.test(date))return ['PENDIENTE','Sin planificar'];
