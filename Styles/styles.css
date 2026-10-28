@@ -1294,3 +1294,7 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 #geoStoredRoutes .geo-route-link:hover,#geoStoredRoutes .geo-route-link:focus-visible{color:#e87917}
 #geoStoredRoutes .table-wrap{overflow-x:auto}
 #geoStoredRoutes th{white-space:nowrap}
+
+/* Mismo tratamiento visual que los encabezados de rutas junto al mapa. */
+#geoStoredRoutes button.geo-route-link{color:inherit;text-decoration:none;font-weight:700;border-radius:7px;padding:4px 6px;transition:background-color .15s ease,color .15s ease}
+#geoStoredRoutes button.geo-route-link:hover,#geoStoredRoutes button.geo-route-link:focus-visible{background-color:#fff0df;color:inherit;text-decoration:none;outline-offset:2px}
