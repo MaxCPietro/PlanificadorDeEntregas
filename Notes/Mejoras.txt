@@ -9,6 +9,7 @@ Version 6 (Cambios Menores)
     7) Mostrar camino de vuelta.
     8) Guardar en base de datos.
     9) Que pemita marcar y desmarcar pedidos individualmente
+    10) Que distinga cuando el pedido se retira del deposito.
 2) Sacar los fitros de arriba y ponerlos donde correspondan en cada subsección.
 3) Base de datos de clientes
     1) Poder Eliminar Clientes
