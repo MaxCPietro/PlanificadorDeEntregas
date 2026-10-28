@@ -1283,3 +1283,9 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 #orderDlg.geo-order-readonly #cancelOrder{font-size:0}
 #orderDlg.geo-order-readonly #cancelOrder::after{content:'Cerrar';font-size:14px}
 #orderDlg.geo-order-readonly input:disabled,#orderDlg.geo-order-readonly select:disabled,#orderDlg.geo-order-readonly textarea:disabled{opacity:1;color:inherit;-webkit-text-fill-color:currentColor;cursor:default}
+
+/* Filtros de estados independientes en la cabecera de rutas almacenadas */
+.geo-route-table-heading{align-items:center}
+.geo-route-filter{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.geo-state-choice{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;cursor:pointer}
+.geo-state-choice input{accent-color:#e87917;margin:0}
