@@ -2185,23 +2185,36 @@ function toggleRoute(key, on) {
 }
 
 
+function groupedStops(orders) {
+ const stops=[];
+ const index=new Map();
+ orders.forEach(p=>{
+  // Aproximadamente un metro: evita visitas duplicadas por coordenadas idénticas.
+  const key=(+p.latitud).toFixed(5)+','+(+p.longitud).toFixed(5);
+  if(!index.has(key)){const stop={lat:+p.latitud,lng:+p.longitud,orders:[]};index.set(key,stop);stops.push(stop);}
+  index.get(key).orders.push(p);
+ });
+ return stops;
+}
 let routeDetailMap = null;
 let routeDetailRequest = 0;
 async function openRouteDetails(key) {
     const groups = optimizedRoutes || mapGroups();
     const orders = (groups.get(key) || []).filter(p=>!excludedGeoOrders.has(String(p.id)));
+    const stops = groupedStops(orders);
     if (!orders.length) { toast('No hay pedidos incluidos en esta ruta'); return; }
     let dialog = document.getElementById('geoRouteDialog');
     if (!dialog) {
         dialog = document.createElement('dialog');
         dialog.id = 'geoRouteDialog';
         dialog.style.cssText = 'width:min(1000px,95vw);max-height:92vh;padding:18px;border:1px solid #ddd;border-radius:12px';
-        dialog.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h2 id="geoRouteTitle"></h2><button type="button" id="geoCloseRoute">Cerrar</button></div>' +
+        dialog.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h2 id="geoRouteTitle"></h2><div style="display:flex;gap:6px"><button type="button" id="geoMaxRoute" title="Maximizar o restaurar">⛶</button><button type="button" id="geoCloseRoute">Cerrar</button></div></div>' +
             '<div id="geoRouteSummary"></div><div id="geoDetailMap" style="height:420px;min-height:280px;margin:12px 0;border-radius:8px"></div>' +
             '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin:8px 0"><span>🔵 Ida y entregas</span><span>🟠 Regreso al depósito</span></div>' +
             '<h3>Consumo por parada</h3><div id="geoRouteStops"></div>';
         document.body.appendChild(dialog);
         dialog.querySelector('#geoCloseRoute').onclick = () => dialog.close();
+        dialog.querySelector('#geoMaxRoute').onclick = () => { dialog.classList.toggle('geo-route-maximized'); setTimeout(()=>routeDetailMap?.invalidateSize(),80); };
         dialog.addEventListener('close', () => {
             routeDetailRequest++;
             if (routeDetailMap) { routeDetailMap.remove(); routeDetailMap = null; }
@@ -2216,7 +2229,7 @@ async function openRouteDetails(key) {
     routeDetailMap = L.map('geoDetailMap').setView([DEPOT.lat, DEPOT.lng],11);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(routeDetailMap);
     setTimeout(() => { if (requestId===routeDetailRequest) routeDetailMap?.invalidateSize(); },100);
-    const points = [DEPOT,...orders.map(p=>({lat:+p.latitud,lng:+p.longitud})),DEPOT];
+    const points = [DEPOT,...stops,DEPOT];
     const coords = points.map(p=>p.lng+','+p.lat).join(';');
     try {
         const response = await fetch('https://router.project-osrm.org/route/v1/driving/'+coords+'?overview=full&geometries=geojson&steps=true');
@@ -2255,15 +2268,15 @@ async function openRouteDetails(key) {
             const liters = km*consumption/100;
             const totalLiters = cumulativeKm*consumption/100;
             const isReturn = i===legs.length-1;
-            const label = isReturn ? 'Regreso al depósito' : ('Parada '+(i+1)+' · #'+orders[i].numero+' · '+nameOf('clientes',orders[i].cliente_id));
+            const label = isReturn ? 'Regreso al depósito' : ('Parada '+(i+1)+' · '+stops[i].orders.map(p=>'#'+p.numero+' '+nameOf('clientes',p.cliente_id)).join(' / '));
             return '<div style="padding:8px 0;border-bottom:1px solid #e5e7eb"><b>'+esc(label)+'</b><div class="muted">'+km.toFixed(1)+' km · '+Math.round(leg.duration/60)+' min · '+liters.toFixed(2)+' L tramo · '+totalLiters.toFixed(2)+' L acumulados</div></div>';
         });
         points.forEach((p,i) => {
-            const label = i===0 ? 'Salida · Depósito Pilar' : i===points.length-1 ? 'Regreso · Depósito Pilar' : 'Parada '+i+' · #'+orders[i-1].numero;
+            const label = i===0 ? 'Salida · Depósito Pilar' : i===points.length-1 ? 'Regreso · Depósito Pilar' : 'Parada '+i+' · '+stops[i-1].orders.map(o=>'#'+o.numero+' '+nameOf('clientes',o.cliente_id)).join(' / ');
             const fuel = i===0 ? 0 : legs.slice(0,i).reduce((sum,leg)=>sum+leg.distance,0)/1000*consumption/100;
-            L.marker([p.lat,p.lng]).addTo(routeDetailMap).bindPopup(esc(label)+'<br>Combustible acumulado: '+fuel.toFixed(2)+' L');
+            L.marker([p.lat,p.lng]).addTo(routeDetailMap).bindTooltip(esc(label)).bindPopup(esc(label)+'<br>Combustible acumulado: '+fuel.toFixed(2)+' L');
         });
-        dialog.querySelector('#geoRouteSummary').textContent = orders.length+' paradas · '+(route.distance/1000).toFixed(1)+' km ida y vuelta · '+Math.round(route.duration/60)+' min · '+geoFuelSummary(route.distance/1000);
+        dialog.querySelector('#geoRouteSummary').textContent = stops.length+' paradas ('+orders.length+' pedidos) · '+(route.distance/1000).toFixed(1)+' km ida y vuelta · '+Math.round(route.duration/60)+' min · '+geoFuelSummary(route.distance/1000);
         dialog.querySelector('#geoRouteStops').innerHTML = rows.join('');
     } catch(e) {
         if(dialog.open && requestId===routeDetailRequest) dialog.querySelector('#geoRouteStops').textContent = e.message;
@@ -2394,55 +2407,13 @@ function drawMap() {
         const visible = routeVisibility.get(key) !== false;
         const ms = [];
 
-        orders.forEach((p, i) => {
-            const icon = L.divIcon({
-                className: 'order-marker',
-                html: `
-                    <div style="
-                        background:${color};
-                        color:white;
-                        border:2px solid white;
-                        border-radius:50%;
-                        width:28px;
-                        height:28px;
-                        display:flex;
-                        align-items:center;
-                        justify-content:center;
-                        font-weight:700;
-                        box-shadow:0 1px 5px #555
-                    ">${i + 1}</div>
-                `,
-                iconSize: [28, 28],
-                iconAnchor: [14, 14]
-            });
-
-            const m = L.marker(
-                [+p.latitud, +p.longitud],
-                { icon }
-            ).bindPopup(`
-                <b>
-                    #${esc(p.numero)}
-                    · ${esc(nameOf('clientes', p.cliente_id))}
-                </b>
-                <br>
-                ${esc(
-                    p.direccion_entrega ||
-                    cDeliveryAddress(p.cliente_id)
-                )}
-                <br>
-                ${esc(
-                    key === 'SIN FECHA'
-                        ? 'Sin fecha de entrega'
-                        : formatDate(key)
-                )}
-                · ${esc(p.estado)}
-            `);
-
-            if (excludedGeoOrders.has(String(p.id))) m.setOpacity(0.25);
-            if (visible) m.addTo(map);
-
-            ms.push(m);
-            markers.push(m);
+        groupedStops(orders).forEach((stop,i)=>{
+            const clients=stop.orders.map(p=>'#'+p.numero+' · '+nameOf('clientes',p.cliente_id)).join(' / ');
+            const icon=L.divIcon({className:'order-marker',html:'<div style="background:'+color+';color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 1px 5px #555">'+(i+1)+(stop.orders.length>1?'×'+stop.orders.length:'')+'</div>',iconSize:[36,30],iconAnchor:[18,15]});
+            const m=L.marker([stop.lat,stop.lng],{icon}).bindTooltip(esc(clients),{direction:'top'}).bindPopup('<b>Parada '+(i+1)+'</b><br>'+stop.orders.map(p=>esc('#'+p.numero+' · '+nameOf('clientes',p.cliente_id))).join('<br>'));
+            if(stop.orders.every(p=>excludedGeoOrders.has(String(p.id))))m.setOpacity(.25);
+            if(visible)m.addTo(map);
+            ms.push(m);markers.push(m);
         });
 
         routeMarkers.set(key, ms);
@@ -2518,7 +2489,7 @@ async function requestRoadRoute(key, orders, color) {
 
     const coords = [
         `${DEPOT.lng},${DEPOT.lat}`,
-        ...orders.map(p => `${p.longitud},${p.latitud}`),
+        ...groupedStops(orders).map(p => `${p.lng},${p.lat}`),
         `${DEPOT.lng},${DEPOT.lat}`
     ].join(';');
 
