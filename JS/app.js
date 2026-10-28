@@ -2116,6 +2116,7 @@ function renderStoredRoutes(){
   return ['PROGRAMADO','Planificado'];
  };
  const sort=window.geoRouteSort||{column:'fecha',asc:false};
+ const stateFilter=window.geoRouteStatusFilter||'TODOS';
  const records=routes.map(r=>{
   const orders=(r.pedidos||[]).map(link=>{
    const p=cache.pedidos.find(p=>String(p.id)===String(link.pedido_id));
@@ -2123,17 +2124,27 @@ function renderStoredRoutes(){
   }).filter(Boolean).sort((a,b)=>(a.__order||0)-(b.__order||0));
   const stops=groupedStops(orders.filter(p=>p.__included));
   const [status,label]=statusFor(r.fecha);
-  const numbers=orders.map(p=>'#'+esc(p.numero)+(p.__included?'':' (excluido)')).join(', ');
+  const numbers=orders.map(p=>{
+   const client=nameOf('clientes',p.cliente_id);
+   const address=p.direccion_entrega||cDeliveryAddress(p.cliente_id)||'Sin dirección';
+   const details='Pedido #'+p.numero+' · '+client+'\nDirección: '+address+'\nFecha pedido: '+(p.fecha_pedido||'—')+'\nFecha entrega: '+(p.fecha_entrega||'—')+'\nBultos: '+bultos(p)+'\nEstado: '+p.estado+'\nTransportista: '+(p.transportista||'—')+'\nObservaciones: '+(p.observaciones||'—');
+   return '<span class="geo-order-tooltip" tabindex="0" data-order-id="'+esc(String(p.id))+'" title="'+esc(details).replaceAll('"','&quot;')+'">#'+esc(p.numero)+'</span>'+(p.__included?'':' (excluido)');
+  }).join(', ');
   return {ruta:routeDisplayName(r.key),fecha:r.fecha||'',transportista:r.transportista||'',paradas:stops.length,pedidos:numbers,estado:label,resumen:r.resumen||'Sin calcular',status,html:'<tr><td>'+esc(routeDisplayName(r.key))+'</td><td>'+esc(r.fecha||'—')+'</td><td>'+esc(r.transportista||'—')+'</td><td>'+stops.length+'</td><td>'+numbers+'</td><td><span class="status-badge status-'+status.replaceAll(' ','-')+'">'+label+'</span></td><td>'+esc(r.resumen||'Sin calcular')+'</td></tr>'};
  });
- records.sort((a,b)=>{
+ const filteredRecords=records.filter(r=>stateFilter==='TODOS'||r.status===stateFilter);
+ filteredRecords.sort((a,b)=>{
   const av=a[sort.column],bv=b[sort.column];
   const cmp=typeof av==='number'&&typeof bv==='number'?av-bv:String(av||'').localeCompare(String(bv||''),'es',{numeric:true});
   return sort.asc?cmp:-cmp;
  });
  const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['paradas','Paradas'],['pedidos','Pedidos'],['estado','Estado'],['resumen','Resumen']];
  const headers=columns.map(([id,label])=>'<th><button type="button" class="geo-sort" data-geo-sort="'+id+'" aria-label="Ordenar por '+label+'">'+label+' '+(sort.column===id?(sort.asc?'▲':'▼'):'↕')+'</button></th>').join('');
- host.innerHTML='<h3>Rutas en LocalStorage</h3>'+(records.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+records.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">Sin rutas guardadas</p>');
+ const filterHtml='<div class="geo-route-filter"><label for="geoStatusFilter">Estado: </label><select id="geoStatusFilter"><option value="TODOS">Todos los estados</option><option value="PENDIENTE">Sin planificar</option><option value="PROGRAMADO">Planificado</option><option value="EN REPARTO">En reparto</option><option value="ENTREGADO">Entregado</option></select></div>';
+ host.innerHTML='<div class="geo-route-table-heading"><h3>Rutas en LocalStorage</h3>'+filterHtml+'</div>'+(filteredRecords.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+filteredRecords.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">Sin rutas guardadas</p>');
+ const select=host.querySelector('#geoStatusFilter');
+ select.value=stateFilter;
+ select.onchange=()=>{window.geoRouteStatusFilter=select.value;renderStoredRoutes();};
  host.querySelectorAll('[data-geo-sort]').forEach(btn=>btn.onclick=()=>{
   const column=btn.dataset.geoSort;
   window.geoRouteSort={column,asc:sort.column===column?!sort.asc:true};
