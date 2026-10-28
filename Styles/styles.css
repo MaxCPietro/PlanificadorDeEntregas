@@ -1254,3 +1254,12 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 .geo-route-head [data-open-route]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%}
 .geo-calc-route{flex-shrink:0;padding:3px 8px;font-size:18px;line-height:1.2}
 .geo-route-card [data-route-meta]:empty{display:none}
+
+.geo-route-card:hover{background:transparent}
+.geo-route-head{border-radius:7px;transition:background-color .15s ease;padding:3px}
+.geo-route-head:hover{background-color:#fff0df}
+.geo-order-row{transition:opacity .15s ease,background-color .15s ease;padding:2px 4px;border-radius:4px}
+.geo-order-excluded{opacity:.42;background:#e5e7eb}
+.geo-order-excluded label{text-decoration:line-through}
+#geoStoredRoutes table{width:100%;border-collapse:collapse}
+#geoStoredRoutes th,#geoStoredRoutes td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
