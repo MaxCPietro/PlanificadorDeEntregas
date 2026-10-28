@@ -1245,3 +1245,12 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
   #orderDlg .product-line { padding:8px; gap:6px; }
   #orderDlg .product-line > input,#orderDlg .product-line > select { font-size:16px; }
 }
+
+.geo-settings{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.geo-route-card{transition:background-color .15s ease;border-radius:8px}
+.geo-route-card:hover{background-color:#fff0df}
+.geo-route-head{display:flex;align-items:center;gap:5px;min-width:0}
+.geo-route-head .route-check{display:flex;align-items:center;min-width:0;flex:1}
+.geo-route-head [data-open-route]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%}
+.geo-calc-route{flex-shrink:0;padding:3px 8px;font-size:18px;line-height:1.2}
+.geo-route-card [data-route-meta]:empty{display:none}
