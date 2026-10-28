@@ -2107,18 +2107,20 @@ function dedupeGeoRoutes(routes) {
 }
 
 function persistGeoRoutes(){
- const groups=optimizedRoutes||mapGroups();
+ // Persistir exclusivamente la planificación original. La optimización es simulación.
+ const groups=mapGroups();
  let previous=[];
  try{previous=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}').routes||[]}catch{}
  const current=[...groups].map(([key,orders])=>({
-  key,fecha:key.replace(/^OPT-/,'').split(' · ')[0],
+  key,fecha:key.split(' · ')[0],
   transportista:orders[0]?.transportista||null,
   pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:!excludedGeoOrders.has(String(p.id)),orden:i+1})),
   resumen:routeSummaries.get(key)||null
  }));
  const ids=new Set(current.map(r=>r.key));
- const routes=dedupeGeoRoutes([...current,...previous.filter(r=>!ids.has(r.key))]);
- localStorage.setItem(GEO_ROUTE_STORAGE,JSON.stringify({version:1,routes,excludedOrderIds:[...excludedGeoOrders],updated_at:new Date().toISOString()}));
+ const historical=previous.filter(r=>!r.key?.startsWith('OPT-')&&!ids.has(r.key));
+ const routes=[...current,...historical];
+ localStorage.setItem(GEO_ROUTE_STORAGE,JSON.stringify({version:2,routes,excludedOrderIds:[...excludedGeoOrders],updated_at:new Date().toISOString()}));
  renderStoredRoutes();
 }
 
@@ -2163,7 +2165,7 @@ function renderStoredRoutes(){
  if(!host)return;
  let state={};
  try{state=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}')}catch{}
- const routes=dedupeGeoRoutes(state.routes||[]);
+ const routes=(state.routes||[]).filter(r=>!r.key?.startsWith('OPT-'));
  const today=iso(new Date());
  const statusFor=date=>{
   if(!date || date==='SIN FECHA' || !/^\d{4}-\d{2}-\d{2}$/.test(date))return ['PENDIENTE','Sin planificar'];
@@ -2172,7 +2174,7 @@ function renderStoredRoutes(){
   return ['PROGRAMADO','Planificado'];
  };
  const sort=window.geoRouteSort||{column:'fecha',asc:false};
- const stateFilter=window.geoRouteStatusFilter||'TODOS';
+ const selectedStatuses=window.geoRouteStatusFilters || new Set(['PENDIENTE','PROGRAMADO','EN REPARTO']);
  const records=routes.map(r=>{
   const orders=(r.pedidos||[]).map(link=>{
    const p=cache.pedidos.find(p=>String(p.id)===String(link.pedido_id));
@@ -2188,7 +2190,7 @@ function renderStoredRoutes(){
   }).join(', ');
   return {ruta:routeDisplayName(r.key),fecha:r.fecha||'',transportista:r.transportista||'',paradas:stops.length,pedidos:numbers,estado:label,resumen:r.resumen||'Sin calcular',status,html:'<tr><td>'+esc(routeDisplayName(r.key))+'</td><td>'+esc(geoDisplayDate(r.fecha))+'</td><td>'+esc(r.transportista||'—')+'</td><td>'+stops.length+'</td><td>'+numbers+'</td><td><span class="status-badge status-'+status.replaceAll(' ','-')+'">'+label+'</span></td><td>'+esc(r.resumen||'Sin calcular')+'</td></tr>'};
  });
- const filteredRecords=records.filter(r=>stateFilter==='TODOS'||r.status===stateFilter);
+ const filteredRecords=records.filter(r=>selectedStatuses.has(r.status));
  filteredRecords.sort((a,b)=>{
   const av=a[sort.column],bv=b[sort.column];
   const cmp=typeof av==='number'&&typeof bv==='number'?av-bv:String(av||'').localeCompare(String(bv||''),'es',{numeric:true});
@@ -2196,11 +2198,15 @@ function renderStoredRoutes(){
  });
  const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['paradas','Paradas'],['pedidos','Pedidos'],['estado','Estado'],['resumen','Resumen']];
  const headers=columns.map(([id,label])=>'<th><button type="button" class="geo-sort" data-geo-sort="'+id+'" aria-label="Ordenar por '+label+'">'+label+' '+(sort.column===id?(sort.asc?'▲':'▼'):'↕')+'</button></th>').join('');
- const filterHtml='<div class="geo-route-filter"><label for="geoStatusFilter">Estado: </label><select id="geoStatusFilter"><option value="TODOS">Todos los estados</option><option value="PENDIENTE">Sin planificar</option><option value="PROGRAMADO">Planificado</option><option value="EN REPARTO">En reparto</option><option value="ENTREGADO">Entregado</option></select></div>';
- host.innerHTML='<div class="geo-route-table-heading"><h3>Rutas en LocalStorage</h3>'+filterHtml+'</div>'+(filteredRecords.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+filteredRecords.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">Sin rutas guardadas</p>');
- const select=host.querySelector('#geoStatusFilter');
- select.value=stateFilter;
- select.onchange=()=>{window.geoRouteStatusFilter=select.value;renderStoredRoutes();};
+ const statusOptions=[['PENDIENTE','Sin planificar'],['PROGRAMADO','Planificado'],['EN REPARTO','En reparto'],['ENTREGADO','Entregado']];
+ const filterHtml='<div class="geo-route-filter"><span>Estados:</span>'+statusOptions.map(([id,label])=>'<label class="geo-state-choice"><input type="checkbox" data-geo-status="'+id+'" '+(selectedStatuses.has(id)?'checked':'')+'> '+label+'</label>').join('')+'</div>';
+ host.innerHTML='<div class="geo-route-table-heading"><h3>Rutas en LocalStorage</h3>'+filterHtml+'</div>'+(filteredRecords.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+filteredRecords.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">No hay rutas para los estados seleccionados.</p>');
+ host.querySelectorAll('[data-geo-status]').forEach(input=>input.onchange=()=>{
+  const next=new Set(selectedStatuses);
+  if(input.checked)next.add(input.dataset.geoStatus);else next.delete(input.dataset.geoStatus);
+  window.geoRouteStatusFilters=next;
+  renderStoredRoutes();
+ });
  host.querySelectorAll('[data-order-id]').forEach(btn=>btn.onclick=()=>openStoredGeoOrder(btn.dataset.orderId));
  host.querySelectorAll('[data-geo-sort]').forEach(btn=>btn.onclick=()=>{
   const column=btn.dataset.geoSort;
