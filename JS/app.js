@@ -1493,6 +1493,7 @@ function newOrder() {
 
 
 async function editOrder(id) {
+    setGeoOrderReadOnly(false);
     const p = cache.pedidos.find(x => x.id === id);
 
     if (!p) return;
@@ -2025,11 +2026,35 @@ $('#deleteOrder').onclick = async () => {
    [15] CONFIGURACIÓN DEL MAPA Y ESTADO DE LAS RUTAS
    ============================================================ */
 
+const geoSettings = JSON.parse(localStorage.getItem('waiparaGeoSettings') || '{}');
 const DEPOT = {
-    name: 'Depósito Pilar · Sgto. Juan Bautista Cabral 1155, La Lonja',
-    lat: -34.441901,
-    lng: -58.862627
+    name: geoSettings.depotName || 'Depósito Pilar · Sgto. Juan Bautista Cabral 1155, La Lonja',
+    lat: Number.isFinite(+geoSettings.lat) && geoSettings.lat !== undefined ? +geoSettings.lat : -34.441901,
+    lng: Number.isFinite(+geoSettings.lng) && geoSettings.lng !== undefined ? +geoSettings.lng : -58.862627
 };
+function geoFuelSummary(km) {
+    const liters = km * (Number(geoSettings.consumption) || 12) / 100;
+    const price = Number(geoSettings.fuelPrice);
+    return liters.toFixed(1) + ' L estimados' +
+        (price > 0 ? ' · $ ' + (liters * price).toLocaleString('es-AR', {maximumFractionDigits: 0}) : ' · precio/L sin configurar');
+}
+function geoSetup() {
+ const panel=document.getElementById('geoSettingsPanel');
+ if(!panel || panel.dataset.ready) return;
+ panel.dataset.ready='1';
+ panel.innerHTML='<label>L/100 km <input id="geoConsumption" type="number" min="0.1" step="0.1" style="width:65px"></label> <label>Combustible $/L <input id="geoFuelPrice" type="number" min="0" step="0.01" style="width:85px" placeholder="Precio"></label>';
+ panel.querySelector('#geoConsumption').value=geoSettings.consumption||12;
+ panel.querySelector('#geoFuelPrice').value=geoSettings.fuelPrice||'';
+ panel.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{
+  const consumption=Number(panel.querySelector('#geoConsumption').value);
+  const fuelPrice=panel.querySelector('#geoFuelPrice').value;
+  if(!(consumption>0) || (fuelPrice!=='' && Number(fuelPrice)<0)){toast('Revisá los valores');return;}
+  Object.assign(geoSettings,{consumption,fuelPrice});
+  localStorage.setItem('waiparaGeoSettings',JSON.stringify(geoSettings));
+  toast('Configuración guardada localmente');
+ }));
+}
+
 
 const ROUTE_COLORS = [
     '#1769d2', '#d64545', '#1f9d60', '#8b5cf6', '#d97706',
@@ -2041,7 +2066,195 @@ let routeMarkers = new Map();
 let routeVisibility = new Map();
 let routeSummaries = new Map();
 let optimizedRoutes = null;
+const GEO_ROUTE_STORAGE='waiparaRoutesV1';
+let savedRouteState={};
+try { savedRouteState=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}'); } catch {}
+const excludedGeoOrders=new Set(savedRouteState.excludedOrderIds||[]);
+function geoRouteIdentity(route) {
+ const date=route.fecha||route.key?.replace(/^OPT-/,'').split(' · ')[0]||'SIN FECHA';
+ const driver=String(route.transportista||'Sin asignar').trim().toLocaleLowerCase('es');
+ const orderIds=[...(route.pedidos||[])].map(p=>String(p.pedido_id)).sort();
+ return date+'|'+driver+'|'+orderIds.join(',');
+}
+function dedupeGeoRoutes(routes) {
+ const dateOf=r=>r.fecha||r.key?.replace(/^OPT-/,'').split(' · ')[0]||'SIN FECHA';
+ const driverOf=r=>String(r.transportista||'Sin asignar').trim().toLocaleLowerCase('es');
+ const isOptimized=r=>r.key?.startsWith('OPT-');
+ const byIdentity=new Map();
+ for(const route of routes){
+  const id=geoRouteIdentity(route);
+  const prior=byIdentity.get(id);
+  const score=r=>(isOptimized(r)?4:0)+(r.resumen?2:0);
+  if(!prior||score(route)>score(prior))byIdentity.set(id,route);
+ }
+ const unique=[...byIdentity.values()];
+ const optimizedByGroup=new Map();
+ for(const r of unique.filter(isOptimized)){
+  const group=dateOf(r)+'|'+driverOf(r);
+  if(!optimizedByGroup.has(group))optimizedByGroup.set(group,new Set());
+  (r.pedidos||[]).forEach(p=>optimizedByGroup.get(group).add(String(p.pedido_id)));
+ }
+ const result=[];
+ for(const route of unique){
+  if(isOptimized(route)){result.push(route);continue;}
+  const group=dateOf(route)+'|'+driverOf(route);
+  const assigned=optimizedByGroup.get(group);
+  if(!assigned){result.push(route);continue;}
+  const remaining=(route.pedidos||[]).filter(p=>!assigned.has(String(p.pedido_id)));
+  if(remaining.length)result.push({...route,pedidos:remaining,resumen:null});
+ }
+ return result;
+}
 
+function persistGeoRoutes(){
+ // La fuente de verdad es el pedido actualizado, no su agrupación antigua en LocalStorage.
+ let previous=[];
+ try{previous=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}').routes||[]}catch{}
+ const oldByKey=new Map(previous.filter(r=>!r.key?.startsWith('OPT-')).map(r=>[r.key,r]));
+ const groups=new Map();
+ cache.pedidos.forEach(p=>{
+  if(!p.id)return;
+  const key=routeKey(p);
+  if(!groups.has(key))groups.set(key,[]);
+  groups.get(key).push(p);
+ });
+ const routes=[...groups].map(([key,orders])=>{
+  const old=oldByKey.get(key);
+  const oldIds=new Set((old?.pedidos||[]).map(p=>String(p.pedido_id)));
+  const sameOrders=oldIds.size===orders.length&&orders.every(p=>oldIds.has(String(p.id)));
+  return {
+   key,fecha:orders[0]?.fecha_entrega||'SIN FECHA',
+   transportista:orders[0]?.transportista||null,
+   pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:!excludedGeoOrders.has(String(p.id)),orden:i+1})),
+   resumen:sameOrders?(routeSummaries.get(key)||old?.resumen||null):null
+  };
+ });
+ localStorage.setItem(GEO_ROUTE_STORAGE,JSON.stringify({version:3,routes,excludedOrderIds:[...excludedGeoOrders],updated_at:new Date().toISOString()}));
+ renderStoredRoutes();
+}
+
+function geoDisplayDate(value) {
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(value||''))return 'Sin fecha';
+ const [year,month,day]=value.split('-').map(Number);
+ const months=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+ return String(day).padStart(2,'0')+'-'+months[month-1]+'-'+String(year).slice(-2);
+}
+function setGeoOrderReadOnly(enabled) {
+ const dlg=document.getElementById('orderDlg');
+ if(!dlg)return;
+ dlg.classList.toggle('geo-order-readonly',enabled);
+ const form=document.getElementById('orderForm');
+ form.querySelectorAll('input,select,textarea').forEach(el=>{
+  if(enabled){el.dataset.geoPriorDisabled=el.disabled?'1':'0';el.disabled=true;}
+  else if(el.dataset.geoPriorDisabled!==undefined){
+   el.disabled=el.dataset.geoPriorDisabled==='1';
+   delete el.dataset.geoPriorDisabled;
+  }
+ });
+}
+document.getElementById('orderDlg')?.addEventListener('close',()=>setGeoOrderReadOnly(false));
+async function openStoredGeoOrder(id) {
+ try {
+  const {data,error}=await sb.from('pedidos').select('*').eq('id',id).single();
+  if(error)throw error;
+  if(!data)throw Error('Pedido no encontrado en Supabase');
+  const index=cache.pedidos.findIndex(p=>String(p.id)===String(id));
+  if(index<0)cache.pedidos.push(data);else cache.pedidos[index]=data;
+  // Actualizar el detalle de productos antes de abrir el modal existente.
+  const {data:items,error:itemsError}=await sb.from('pedido_productos').select('*').eq('pedido_id',id);
+  if(itemsError)throw itemsError;
+  cache.pedido_productos=cache.pedido_productos.filter(p=>String(p.pedido_id)!==String(id)).concat(items||[]);
+  editOrder(data.id);
+  document.getElementById('orderTitle').textContent='Consultar pedido #'+data.numero;
+  setGeoOrderReadOnly(true);
+ }catch(e){toast('No se pudo recuperar el pedido: '+e.message);}
+}
+function renderStoredRoutes(){
+ const host=document.getElementById('geoStoredRoutes');
+ if(!host)return;
+ let state={};
+ try{state=JSON.parse(localStorage.getItem(GEO_ROUTE_STORAGE)||'{}')}catch{}
+ const routes=(state.routes||[]).filter(r=>!r.key?.startsWith('OPT-')).map(r=>({
+  ...r,pedidos:(r.pedidos||[]).filter(link=>{
+   const p=cache.pedidos.find(p=>String(p.id)===String(link.pedido_id));
+   return p&&routeKey(p)===r.key;
+  })
+ })).filter(r=>r.pedidos.length);
+ const today=iso(new Date());
+ const statusFor=date=>{
+  if(!date||date==='SIN FECHA'||!/^\d{4}-\d{2}-\d{2}$/.test(date))return ['PENDIENTE','Sin planificar'];
+  if(date<today)return ['ENTREGADO','Entregado'];
+  if(date===today)return ['EN REPARTO','En reparto'];
+  return ['PROGRAMADO','Planificado'];
+ };
+ const sort=window.geoRouteSort||{column:'fecha',asc:false};
+ const selectedStatuses=window.geoRouteStatusFilters||new Set(['PENDIENTE','PROGRAMADO','EN REPARTO']);
+ const countByDate=new Map();
+ routes.forEach(r=>countByDate.set(r.fecha,(countByDate.get(r.fecha)||0)+1));
+ const sequenceByDate=new Map();
+ const formatNumber=n=>n==null?'':n.toLocaleString('es-AR',{maximumFractionDigits:1});
+ const records=routes.map((r,index)=>{
+  const orders=(r.pedidos||[]).map(link=>{
+   const p=cache.pedidos.find(p=>String(p.id)===String(link.pedido_id));
+   return p?{...p,__included:link.incluido!==false,__order:link.orden}:null;
+  }).filter(Boolean).sort((x,y)=>(x.__order||0)-(y.__order||0));
+  const stops=groupedStops(orders.filter(p=>p.__included));
+  const [status,label]=statusFor(r.fecha);
+  const n=(sequenceByDate.get(r.fecha)||0)+1;
+  sequenceByDate.set(r.fecha,n);
+  const base=routeDisplayName(r.key);
+  const routeName=countByDate.get(r.fecha)>1?base+'-'+n:base;
+  const summary=r.resumen||'';
+  const kmMatch=summary.match(/(\d+(?:[.,]\d+)?)\s*km\b/i);
+  const litersMatch=summary.match(/(\d+(?:[.,]\d+)?)\s*L\s*estimados/i);
+  const costMatch=summary.match(/\$\s*([\d.,]+)/);
+  const parseDecimal=v=>v==null?null:Number(v.replace(',','.'));
+  const km=kmMatch?parseDecimal(kmMatch[1]):null;
+  const liters=litersMatch?parseDecimal(litersMatch[1]):null;
+  const cost=costMatch?Number(costMatch[1].replace(/\./g,'').replace(',','.')):null;
+  const totalBultos=orders.filter(p=>p.__included).reduce((sum,p)=>sum+bultos(p),0);
+  const numbers=orders.map(p=>{
+   const client=nameOf('clientes',p.cliente_id);
+   const tooltip='Pedido #'+p.numero+' - '+client;
+   return '<button type="button" class="geo-order-tooltip" data-order-id="'+esc(String(p.id))+'" title="'+esc(tooltip).replaceAll('"','&quot;')+'">#'+esc(p.numero)+'</button>'+(p.__included?'':' (excluido)');
+  }).join(', ');
+  const cells=[
+   '<button type="button" class="geo-route-link" data-stored-route="'+index+'" title="Ver detalle de '+esc(routeName)+'">'+esc(routeName)+'</button>',
+   esc(geoDisplayDate(r.fecha)),esc(r.transportista||'—'),String(stops.length),
+   numbers,String(totalBultos),'<span class="status-badge status-'+status.replaceAll(' ','-')+'">'+esc(label)+'</span>',formatNumber(km),formatNumber(liters),
+   cost==null?'':'$ '+cost.toLocaleString('es-AR',{maximumFractionDigits:0}),
+   esc(summary)
+  ];
+  return {ruta:routeName,fecha:r.fecha||'',transportista:r.transportista||'',paradas:stops.length,pedidos:orders.length,bultos:totalBultos,estado:label,km,litros:liters,costo:cost,resumen:summary,status,html:'<tr>'+cells.map(c=>'<td>'+c+'</td>').join('')+'</tr>',route:r,orders};
+ });
+ const filteredRecords=records.filter(r=>selectedStatuses.has(r.status));
+ filteredRecords.sort((x,y)=>{
+  const av=x[sort.column],bv=y[sort.column];
+  if(av==null||bv==null)return av==null&&bv==null?0:av==null?1:-1;
+  const cmp=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'es',{numeric:true});
+  return sort.asc?cmp:-cmp;
+ });
+ const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['paradas','Paradas'],['pedidos','# Pedidos'],['bultos','Σ Bultos'],['estado','Estado'],['km','Σ Km Aprox'],['litros','Σ Litros Aprox'],['costo','$ Aprox'],['resumen','Resumen']];
+ const headers=columns.map(([id,label])=>'<th><button type="button" class="geo-sort" data-geo-sort="'+id+'" aria-label="Ordenar por '+label+'">'+label+' '+(sort.column===id?(sort.asc?'▲':'▼'):'↕')+'</button></th>').join('');
+ const statusOptions=[['PENDIENTE','Sin planificar'],['PROGRAMADO','Planificado'],['EN REPARTO','En reparto'],['ENTREGADO','Entregado']];
+ const filterHtml='<div class="geo-route-filter"><span>Estados:</span>'+statusOptions.map(([id,label])=>'<label class="geo-state-choice"><input type="checkbox" data-geo-status="'+id+'" '+(selectedStatuses.has(id)?'checked':'')+'> '+label+'</label>').join('')+'</div>';
+ host.innerHTML='<div class="geo-route-table-heading"><h3>Listado de rutas</h3>'+filterHtml+'</div>'+(filteredRecords.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+filteredRecords.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">No hay rutas para los estados seleccionados.</p>');
+ host.querySelectorAll('[data-geo-status]').forEach(input=>input.onchange=()=>{
+  const next=new Set(selectedStatuses);
+  if(input.checked)next.add(input.dataset.geoStatus);else next.delete(input.dataset.geoStatus);
+  window.geoRouteStatusFilters=next;renderStoredRoutes();
+ });
+ host.querySelectorAll('[data-order-id]').forEach(btn=>btn.onclick=()=>openStoredGeoOrder(btn.dataset.orderId));
+ host.querySelectorAll('[data-stored-route]').forEach(btn=>btn.onclick=()=>{
+  const record=records[Number(btn.dataset.storedRoute)];
+  if(record)openRouteDetails(record.route.key,record.orders.filter(p=>p.__included),record.ruta);
+ });
+ host.querySelectorAll('[data-geo-sort]').forEach(btn=>btn.onclick=()=>{
+  const column=btn.dataset.geoSort;
+  window.geoRouteSort={column,asc:sort.column===column?!sort.asc:true};
+  renderStoredRoutes();
+ });
+}
 
 function initMap() {
     if (map) return;
@@ -2064,7 +2277,7 @@ function initMap() {
 /** Pedidos pendientes con coordenadas válidas. */
 function mapped() {
     return cache.pedidos.filter(p =>
-        !['ENTREGADO'].includes(p.estado) &&
+        p.estado !== 'ENTREGADO' &&
         p.latitud != null &&
         p.longitud != null &&
         Number.isFinite(+p.latitud) &&
@@ -2074,7 +2287,7 @@ function mapped() {
 
 
 function routeKey(p) {
-    return p.fecha_entrega || 'SIN FECHA';
+    return (p.fecha_entrega || 'SIN FECHA') + ' · ' + (p.transportista || 'Sin transportista');
 }
 
 
@@ -2136,11 +2349,139 @@ function toggleRoute(key, on) {
 }
 
 
+function groupedStops(orders) {
+ const stops=[];
+ const index=new Map();
+ orders.forEach(p=>{
+  // Aproximadamente un metro: evita visitas duplicadas por coordenadas idénticas.
+  const key=(+p.latitud).toFixed(5)+','+(+p.longitud).toFixed(5);
+  if(!index.has(key)){const stop={lat:+p.latitud,lng:+p.longitud,orders:[]};index.set(key,stop);stops.push(stop);}
+  index.get(key).orders.push(p);
+ });
+ return stops;
+}
+let routeDetailMap = null;
+let routeDetailRequest = 0;
+async function openRouteDetails(key, storedOrders = null, displayName = null) {
+    const groups = optimizedRoutes || mapGroups();
+    const orders = (storedOrders || groups.get(key) || []).filter(p=>!excludedGeoOrders.has(String(p.id)));
+    const stops = groupedStops(orders);
+    if (!orders.length) { toast('No hay pedidos incluidos en esta ruta'); return; }
+    let dialog = document.getElementById('geoRouteDialog');
+    if (!dialog) {
+        dialog = document.createElement('dialog');
+        dialog.id = 'geoRouteDialog';
+        dialog.style.cssText = 'width:min(1000px,95vw);max-height:92vh;padding:18px;border:1px solid #ddd;border-radius:12px';
+        dialog.innerHTML = '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><h2 id="geoRouteTitle"></h2><div style="display:flex;gap:6px"><button type="button" id="geoMaxRoute" title="Maximizar o restaurar">⛶</button><button type="button" id="geoCloseRoute">Cerrar</button></div></div>' +
+            '<div id="geoRouteSummary"></div><div id="geoDetailMap" style="height:420px;min-height:280px;margin:12px 0;border-radius:8px"></div>' +
+            '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:13px;margin:8px 0"><span>🔵 Ida y entregas</span><span>🟠 Regreso al depósito</span></div>' +
+            '<h3>Consumo por parada</h3><div id="geoRouteStops"></div>';
+        document.body.appendChild(dialog);
+        dialog.querySelector('#geoCloseRoute').onclick = () => dialog.close();
+        dialog.querySelector('#geoMaxRoute').onclick = () => { dialog.classList.toggle('geo-route-maximized'); setTimeout(()=>routeDetailMap?.invalidateSize(),80); };
+        dialog.addEventListener('close', () => {
+            routeDetailRequest++;
+            if (routeDetailMap) { routeDetailMap.remove(); routeDetailMap = null; }
+        });
+    }
+    const requestId = ++routeDetailRequest;
+    dialog.querySelector('#geoRouteTitle').textContent = (displayName || routeDisplayName(key)) + ' · ' + (orders[0].transportista || 'Sin asignar');
+    dialog.querySelector('#geoRouteSummary').textContent = orders.length + ' paradas · Calculando ida y regreso…';
+    dialog.querySelector('#geoRouteStops').textContent = 'Calculando consumo por tramo…';
+    if (routeDetailMap) { routeDetailMap.remove(); routeDetailMap = null; }
+    dialog.showModal();
+    routeDetailMap = L.map('geoDetailMap').setView([DEPOT.lat, DEPOT.lng],11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(routeDetailMap);
+    setTimeout(() => { if (requestId===routeDetailRequest) routeDetailMap?.invalidateSize(); },100);
+    const points = [DEPOT,...stops,DEPOT];
+    const coords = points.map(p=>p.lng+','+p.lat).join(';');
+    try {
+        const response = await fetch('https://router.project-osrm.org/route/v1/driving/'+coords+'?overview=full&geometries=geojson&steps=true');
+        if (!response.ok) throw Error('Servicio de rutas no disponible');
+        const result = await response.json();
+        if (result.code !== 'Ok' || !result.routes?.[0]) throw Error('No se pudo calcular el recorrido');
+        if (!dialog.open || !routeDetailMap || requestId!==routeDetailRequest) return;
+        const route = result.routes[0];
+        const legs = route.legs || [];
+        const consumption = Number(geoSettings.consumption) || 12;
+        // Cada tramo OSRM aporta su propia geometría; el último tramo es exclusivamente el regreso.
+        const outbound = [];
+        const inbound = [];
+        legs.forEach((leg,i) => {
+            const target = i===legs.length-1 ? inbound : outbound;
+            (leg.steps || []).forEach(step => {
+                const coordinates = step.geometry?.coordinates || [];
+                coordinates.forEach(c => {
+                    if (!target.length || target[target.length-1][0]!==c[1] || target[target.length-1][1]!==c[0])
+                        target.push([c[1],c[0]]);
+                });
+            });
+        });
+        if (outbound.length>1) L.polyline(outbound,{color:'#1769d2',weight:5}).addTo(routeDetailMap);
+        if (inbound.length>1) L.polyline(inbound,{color:'#e87917',weight:5,dashArray:'9 6'}).addTo(routeDetailMap);
+        // Fallback si OSRM no entrega geometría detallada de los tramos.
+        if (outbound.length<2 || inbound.length<2) {
+            L.geoJSON(route.geometry,{style:{color:'#1769d2',weight:4}}).addTo(routeDetailMap);
+        }
+        const bounds = L.latLngBounds(points.map(p=>[p.lat,p.lng]));
+        routeDetailMap.fitBounds(bounds.pad(0.12));
+        let cumulativeKm = 0;
+        const rows = legs.map((leg,i) => {
+            const km = leg.distance/1000;
+            cumulativeKm += km;
+            const liters = km*consumption/100;
+            const totalLiters = cumulativeKm*consumption/100;
+            const isReturn = i===legs.length-1;
+            const label = isReturn ? 'Regreso al depósito' : ('Parada '+(i+1)+' · '+stops[i].orders.map(p=>'#'+p.numero+' '+nameOf('clientes',p.cliente_id)).join(' / '));
+            return '<div style="padding:8px 0;border-bottom:1px solid #e5e7eb"><b>'+esc(label)+'</b><div class="muted">'+km.toFixed(1)+' km · '+Math.round(leg.duration/60)+' min · '+liters.toFixed(2)+' L tramo · '+totalLiters.toFixed(2)+' L acumulados</div></div>';
+        });
+        points.forEach((p,i) => {
+            const label = i===0 ? 'Salida · Depósito Pilar' : i===points.length-1 ? 'Regreso · Depósito Pilar' : 'Parada '+i+' · '+stops[i-1].orders.map(o=>'#'+o.numero+' '+nameOf('clientes',o.cliente_id)).join(' / ');
+            const fuel = i===0 ? 0 : legs.slice(0,i).reduce((sum,leg)=>sum+leg.distance,0)/1000*consumption/100;
+            L.marker([p.lat,p.lng]).addTo(routeDetailMap).bindTooltip(esc(label)).bindPopup(esc(label)+'<br>Combustible acumulado: '+fuel.toFixed(2)+' L');
+        });
+        dialog.querySelector('#geoRouteSummary').textContent = stops.length+' paradas ('+orders.length+' pedidos) · '+(route.distance/1000).toFixed(1)+' km ida y vuelta · '+Math.round(route.duration/60)+' min · '+geoFuelSummary(route.distance/1000);
+        dialog.querySelector('#geoRouteStops').innerHTML = rows.join('');
+    } catch(e) {
+        if(dialog.open && requestId===routeDetailRequest) dialog.querySelector('#geoRouteStops').textContent = e.message;
+    }
+}
+
+function routeDisplayName(key) {
+    const raw = key.startsWith('OPT-') ? key.slice(4) : key;
+    const date = raw.split(' · ')[0];
+    if (date === 'SIN FECHA') return 'Sin fecha de entrega';
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    const suffix = key.startsWith('OPT-') ? (raw.match(/Viaje \d+/)?.[0] || '') : '';
+    return m ? 'R-' + m[3] + m[2] + m[1].slice(2) + (suffix ? ' · ' + suffix : '') : raw;
+}
+
+async function calculateSingleRoute(key, button) {
+    const groups = optimizedRoutes || mapGroups();
+    const orders = (groups.get(key)||[]).filter(p=>!excludedGeoOrders.has(String(p.id)));
+    if (!orders.length || key.includes('SIN FECHA')) {
+        toast('Esta ruta no tiene fecha o pedidos seleccionados'); return;
+    }
+    if (!map) initMap();
+    button.disabled = true;
+    try {
+        routeLayers.filter(x => x.routeKey === key).forEach(x => map.removeLayer(x.layer));
+        routeLayers = routeLayers.filter(x => x.routeKey !== key);
+        const keys = [...groups.keys()];
+        await requestRoadRoute(key, orders, ROUTE_COLORS[keys.indexOf(key) % ROUTE_COLORS.length]);
+        const meta = [...document.querySelectorAll('[data-route-meta]')].find(x => x.dataset.routeMeta === key);
+        if (meta) meta.textContent = routeSummaries.get(key);
+        toast('Ruta ' + routeDisplayName(key) + ' calculada');
+    } catch(e) { toast(e.message); }
+    finally { button.disabled = false; }
+}
+
 function routeCard(key, color, orders, details = '') {
     const checked = routeVisibility.get(key) !== false;
 
     return `
-        <div class="stop">
+        <div class="stop geo-route-card">
+            <div class="geo-route-head">
             <label class="route-check">
                 <input
                     type="checkbox"
@@ -2152,26 +2493,18 @@ function routeCard(key, color, orders, details = '') {
                     style="background:${color}"
                 ></span>
 
-                <b>${
-                    key === 'SIN FECHA'
-                        ? 'Sin fecha de entrega'
-                        : key.startsWith('OPT-')
-                            ? esc(key.replace(
-                                'OPT-',
-                                'Distribución sugerida · '
-                            ))
-                            : 'Ruta ' + esc(formatDate(key))
-                }</b>
+                <button type="button" data-open-route="${esc(key)}" title="Ver mapa e indicaciones" style="border:0;background:transparent;font-weight:700;cursor:pointer;text-align:left">${esc(routeDisplayName(key))} · ${esc(orders[0]?.transportista || 'Sin asignar')}</button>
             </label>
+            <button type="button" data-calc-route="${esc(key)}" title="Calcular únicamente esta ruta" class="geo-calc-route" aria-label="Calcular esta ruta">↻</button>
+            </div>
 
             <div class="muted" data-route-meta="${esc(key)}">
-                ${orders.length} paradas
-                ${details ? ' · ' + details : ''}
+                ${details || ''}
             </div>
 
             ${orders.map((p, i) => `
-                <div>
-                    ${i + 1}. #${esc(p.numero)}
+                <div class="geo-order-row ${excludedGeoOrders.has(String(p.id)) ? 'geo-order-excluded' : ''}">
+                    <label><input type="checkbox" data-geo-order="${esc(String(p.id))}" ${excludedGeoOrders.has(String(p.id)) ? '' : 'checked'}> ${i + 1}. #${esc(p.numero)}
                     · ${esc(nameOf('clientes', p.cliente_id))}
                     · ${Number(
                         p.__bultos ??
@@ -2179,7 +2512,7 @@ function routeCard(key, color, orders, details = '') {
                             (s, x) => s + (+x.cantidad || 0),
                             0
                         )
-                    ).toLocaleString('es-AR')} bultos
+                    ).toLocaleString('es-AR')} bultos</label>
                 </div>
             `).join('')}
         </div>
@@ -2215,6 +2548,8 @@ function drawMap() {
         }).addTo(map).bindPopup(DEPOT.name)
     );
 
+    geoSetup();
+    renderStoredRoutes();
     const groups = optimizedRoutes || mapGroups();
 
     $('#stops').innerHTML = `
@@ -2236,54 +2571,13 @@ function drawMap() {
         const visible = routeVisibility.get(key) !== false;
         const ms = [];
 
-        orders.forEach((p, i) => {
-            const icon = L.divIcon({
-                className: 'order-marker',
-                html: `
-                    <div style="
-                        background:${color};
-                        color:white;
-                        border:2px solid white;
-                        border-radius:50%;
-                        width:28px;
-                        height:28px;
-                        display:flex;
-                        align-items:center;
-                        justify-content:center;
-                        font-weight:700;
-                        box-shadow:0 1px 5px #555
-                    ">${i + 1}</div>
-                `,
-                iconSize: [28, 28],
-                iconAnchor: [14, 14]
-            });
-
-            const m = L.marker(
-                [+p.latitud, +p.longitud],
-                { icon }
-            ).bindPopup(`
-                <b>
-                    #${esc(p.numero)}
-                    · ${esc(nameOf('clientes', p.cliente_id))}
-                </b>
-                <br>
-                ${esc(
-                    p.direccion_entrega ||
-                    cDeliveryAddress(p.cliente_id)
-                )}
-                <br>
-                ${esc(
-                    key === 'SIN FECHA'
-                        ? 'Sin fecha de entrega'
-                        : formatDate(key)
-                )}
-                · ${esc(p.estado)}
-            `);
-
-            if (visible) m.addTo(map);
-
-            ms.push(m);
-            markers.push(m);
+        groupedStops(orders).forEach((stop,i)=>{
+            const clients=stop.orders.map(p=>'#'+p.numero+' · '+nameOf('clientes',p.cliente_id)).join(' / ');
+            const icon=L.divIcon({className:'order-marker',html:'<div style="background:'+color+';color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:700;box-shadow:0 1px 5px #555">'+(i+1)+(stop.orders.length>1?'×'+stop.orders.length:'')+'</div>',iconSize:[36,30],iconAnchor:[18,15]});
+            const m=L.marker([stop.lat,stop.lng],{icon}).bindTooltip(esc(clients),{direction:'top'}).bindPopup('<b>Parada '+(i+1)+'</b><br>'+stop.orders.map(p=>esc('#'+p.numero+' · '+nameOf('clientes',p.cliente_id))).join('<br>'));
+            if(stop.orders.every(p=>excludedGeoOrders.has(String(p.id))))m.setOpacity(.25);
+            if(visible)m.addTo(map);
+            ms.push(m);markers.push(m);
         });
 
         routeMarkers.set(key, ms);
@@ -2312,6 +2606,13 @@ function drawMap() {
         );
     }
 
+    $('#stops').querySelectorAll('[data-open-route]').forEach(button => {
+        button.onclick = () => openRouteDetails(button.dataset.openRoute);
+    });
+    $('#stops').querySelectorAll('[data-calc-route]').forEach(button => {
+        button.onclick = () => calculateSingleRoute(button.dataset.calcRoute, button);
+    });
+
     $('#stops')
         .querySelectorAll('[data-route-check]')
         .forEach(cb => {
@@ -2320,6 +2621,14 @@ function drawMap() {
                 cb.checked
             );
         });
+
+    $('#stops').querySelectorAll('[data-geo-order]').forEach(cb => cb.onchange = () => {
+        if (cb.checked) excludedGeoOrders.delete(cb.dataset.geoOrder);
+        else excludedGeoOrders.add(cb.dataset.geoOrder);
+        optimizedRoutes = null;
+        persistGeoRoutes();
+        drawMap();
+    });
 
     const pts = [
         [DEPOT.lat, DEPOT.lng],
@@ -2339,11 +2648,13 @@ function drawMap() {
    ============================================================ */
 
 async function requestRoadRoute(key, orders, color) {
+    orders=orders.filter(p=>!excludedGeoOrders.has(String(p.id)));
     if (!orders.length) return;
 
     const coords = [
         `${DEPOT.lng},${DEPOT.lat}`,
-        ...orders.map(p => `${p.longitud},${p.latitud}`)
+        ...groupedStops(orders).map(p => `${p.lng},${p.lat}`),
+        `${DEPOT.lng},${DEPOT.lat}`
     ].join(';');
 
     const j = await fetch(
@@ -2375,21 +2686,40 @@ async function requestRoadRoute(key, orders, color) {
 
     routeSummaries.set(
         key,
-        `${(j.routes[0].distance / 1000).toFixed(1)} km · ` +
-        `${Math.round(j.routes[0].duration / 60)} min`
+        `${(j.routes[0].distance / 1000).toFixed(1)} km ida y vuelta · ` +
+        `${Math.round(j.routes[0].duration / 60)} min · ` +
+        geoFuelSummary(j.routes[0].distance / 1000)
     );
+    persistGeoRoutes();
 }
 
+
+$('#geoRefresh').onclick = async () => {
+ const button=$('#geoRefresh');
+ button.disabled=true;
+ try {
+  await loadAll();
+  optimizedRoutes=null;
+  routeVisibility.clear();
+  routeSummaries.clear();
+  const valid=new Set(cache.pedidos.map(p=>String(p.id)));
+  for(const id of [...excludedGeoOrders])if(!valid.has(id))excludedGeoOrders.delete(id);
+  persistGeoRoutes();
+  drawMap();
+  toast('Mapa actualizado desde los pedidos del calendario');
+ }catch(e){toast('Error al recargar: '+e.message);}
+ finally{button.disabled=false;}
+};
 
 $('#route').onclick = async () => {
     if (!map) initMap();
 
     optimizedRoutes = null;
 
-    const groups = mapGroups();
+    const groups = new Map([...mapGroups()].map(([k,ps])=>[k,ps.filter(p=>!excludedGeoOrders.has(String(p.id)))]).filter(([,ps])=>ps.length));
 
     const keys = [...groups.keys()]
-        .filter(k => k !== 'SIN FECHA')
+        .filter(k => !k.startsWith('SIN FECHA'))
         .sort();
 
     if (!keys.length) {
@@ -2421,7 +2751,6 @@ $('#route').onclick = async () => {
 
             if (meta) {
                 meta.textContent =
-                    `${groups.get(k).length} paradas · ` +
                     `${routeSummaries.get(k)}`;
             }
         }
@@ -2546,10 +2875,10 @@ $('#optimizeRoutes').onclick = async () => {
     if (!map) initMap();
 
     const scope = $('#optimizeScope')?.value || 'all';
-    const dated = mapGroups();
-    if (scope === 'planned') dated.delete('SIN FECHA');
+    const dated = new Map([...mapGroups()].map(([k,ps])=>[k,ps.filter(p=>!excludedGeoOrders.has(String(p.id)))]).filter(([,ps])=>ps.length));
+    if (scope === 'planned') for (const key of [...dated.keys()]) if (key.startsWith('SIN FECHA')) dated.delete(key);
     if (scope === 'unplanned') {
-        for (const key of [...dated.keys()]) if (key !== 'SIN FECHA') dated.delete(key);
+        for (const key of [...dated.keys()]) if (!key.startsWith('SIN FECHA')) dated.delete(key);
     }
 
     if (!dated.size) {
@@ -2577,6 +2906,7 @@ $('#optimizeRoutes').onclick = async () => {
     }
 
     optimizedRoutes = optimized;
+    persistGeoRoutes();
 
     routeVisibility.clear();
     routeSummaries.clear();

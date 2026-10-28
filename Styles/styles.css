@@ -1245,3 +1245,56 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
   #orderDlg .product-line { padding:8px; gap:6px; }
   #orderDlg .product-line > input,#orderDlg .product-line > select { font-size:16px; }
 }
+
+.geo-settings{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.geo-route-card{transition:background-color .15s ease;border-radius:8px}
+.geo-route-card:hover{background-color:#fff0df}
+.geo-route-head{display:flex;align-items:center;gap:5px;min-width:0}
+.geo-route-head .route-check{display:flex;align-items:center;min-width:0;flex:1}
+.geo-route-head [data-open-route]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%}
+.geo-calc-route{flex-shrink:0;padding:3px 8px;font-size:18px;line-height:1.2}
+.geo-route-card [data-route-meta]:empty{display:none}
+
+.geo-route-card:hover{background:transparent}
+.geo-route-head{border-radius:7px;transition:background-color .15s ease;padding:3px}
+.geo-route-head:hover{background-color:#fff0df}
+.geo-order-row{transition:opacity .15s ease,background-color .15s ease;padding:2px 4px;border-radius:4px}
+.geo-order-excluded{opacity:.42;background:#e5e7eb}
+.geo-order-excluded label{text-decoration:line-through}
+#geoStoredRoutes table{width:100%;border-collapse:collapse}
+#geoStoredRoutes th,#geoStoredRoutes td{padding:8px;border-bottom:1px solid #ddd;text-align:left}
+
+#geoRouteDialog.geo-route-maximized{width:100vw!important;max-width:100vw!important;height:100dvh!important;max-height:100dvh!important;margin:0!important;border-radius:0!important;box-sizing:border-box}
+#geoRouteDialog.geo-route-maximized #geoDetailMap{height:calc(100dvh - 255px)!important;min-height:300px}
+#geoRouteDialog [id="geoMaxRoute"]{font-size:20px;min-width:36px}
+
+.geo-route-table-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.geo-route-table-heading h3{margin:0}
+.geo-route-filter{display:flex;align-items:center;gap:8px;font-size:13px}
+.geo-route-filter select{max-width:200px;padding:6px 9px}
+.geo-order-tooltip{cursor:help;text-decoration:underline dotted;text-underline-offset:3px}
+.geo-order-tooltip:hover,.geo-order-tooltip:focus{color:#e87917}
+
+#geoStoredRoutes button.geo-order-tooltip{appearance:none;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+#geoStoredRoutes button.geo-order-tooltip:hover,#geoStoredRoutes button.geo-order-tooltip:focus-visible{color:#e87917}
+
+/* Consulta de pedidos desde el historial de rutas: lectura solamente. */
+#orderDlg.geo-order-readonly #deleteOrder,#orderDlg.geo-order-readonly #addLine,#orderDlg.geo-order-readonly #geocodeOrder,#orderDlg.geo-order-readonly #verifyOrderMap,#orderDlg.geo-order-readonly .product-grid button,#orderDlg.geo-order-readonly .actions button.primary{display:none!important}
+#orderDlg.geo-order-readonly #cancelOrder{font-size:0}
+#orderDlg.geo-order-readonly #cancelOrder::after{content:'Cerrar';font-size:14px}
+#orderDlg.geo-order-readonly input:disabled,#orderDlg.geo-order-readonly select:disabled,#orderDlg.geo-order-readonly textarea:disabled{opacity:1;color:inherit;-webkit-text-fill-color:currentColor;cursor:default}
+
+/* Filtros de estados independientes en la cabecera de rutas almacenadas */
+.geo-route-table-heading{align-items:center}
+.geo-route-filter{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.geo-state-choice{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;cursor:pointer}
+.geo-state-choice input{accent-color:#e87917;margin:0}
+
+#geoStoredRoutes .geo-route-link{appearance:none;border:0;background:none;padding:0;color:#1769d2;text-decoration:underline;text-underline-offset:3px;font:inherit;cursor:pointer}
+#geoStoredRoutes .geo-route-link:hover,#geoStoredRoutes .geo-route-link:focus-visible{color:#e87917}
+#geoStoredRoutes .table-wrap{overflow-x:auto}
+#geoStoredRoutes th{white-space:nowrap}
+
+/* Mismo tratamiento visual que los encabezados de rutas junto al mapa. */
+#geoStoredRoutes button.geo-route-link{color:inherit;text-decoration:none;font-weight:700;border-radius:7px;padding:4px 6px;transition:background-color .15s ease,color .15s ease}
+#geoStoredRoutes button.geo-route-link:hover,#geoStoredRoutes button.geo-route-link:focus-visible{background-color:#fff0df;color:inherit;text-decoration:none;outline-offset:2px}

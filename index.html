@@ -208,11 +208,13 @@
                 <!-- [16.1] Acciones para calcular rutas y distribuir cargas -->
                 <div class="bar map-actions">
                     <b>Mapa de pendientes</b>
+                    <button id="geoRefresh" type="button" title="Recargar desde los datos del calendario" aria-label="Recargar mapa desde calendario">↻ Recargar</button>
 
                     <div class="actions">
                         <button id="route" class="primary">
                             Calcular rutas por fecha
                         </button>
+                        <div id="geoSettingsPanel" class="geo-settings"></div>
 
                         <label class="optimize-label" for="optimizeScope">Optimizar
                             <select id="optimizeScope"><option value="all">Todos los pedidos</option><option value="planned">Solo planificados</option><option value="unplanned">Solo sin planificar</option></select>
@@ -231,7 +233,6 @@
 
                     <!-- Panel lateral con paradas de entrega -->
                     <aside>
-                        <h3>Paradas</h3>
                         <div id="stops"></div>
 
                         <p class="help">
@@ -242,6 +243,7 @@
                     </aside>
 
                 </div>
+                <div id="geoStoredRoutes" style="margin-top:18px"></div>
             </div>
         </section>
 
