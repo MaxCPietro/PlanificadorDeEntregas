@@ -2285,6 +2285,9 @@ async function openStoredGeoOrder(id) {
   setGeoOrderReadOnly(true);
  }catch(e){toast('No se pudo recuperar el pedido: '+e.message);}
 }
+const GEO_ROUTES_PAGE_SIZE = 20;
+let geoRoutesPage = 1;
+
 function renderStoredRoutes(){
  const host=document.getElementById('geoStoredRoutes');
  if(!host)return;
@@ -2348,15 +2351,23 @@ function renderStoredRoutes(){
   const cmp=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'es',{numeric:true});
   return sort.asc?cmp:-cmp;
  });
+ const pageCount=Math.max(1,Math.ceil(filteredRecords.length/GEO_ROUTES_PAGE_SIZE));
+ geoRoutesPage=Math.min(Math.max(1,geoRoutesPage),pageCount);
+ const pageRecords=filteredRecords.slice((geoRoutesPage-1)*GEO_ROUTES_PAGE_SIZE,geoRoutesPage*GEO_ROUTES_PAGE_SIZE);
  const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['paradas','Paradas'],['pedidos','# Pedidos'],['bultos','Σ Bultos'],['estado','Estado'],['km','Σ Km Aprox'],['litros','Σ Litros Aprox'],['costo','$ Aprox'],['resumen','Resumen']];
  const headers=columns.map(([id,label])=>'<th><button type="button" class="geo-sort" data-geo-sort="'+id+'" aria-label="Ordenar por '+label+'">'+label+' '+(sort.column===id?(sort.asc?'▲':'▼'):'↕')+'</button></th>').join('');
  const statusOptions=[['PENDIENTE','Sin planificar'],['PROGRAMADO','Planificado'],['EN REPARTO','En reparto'],['ENTREGADO','Entregado']];
  const filterHtml='<div class="geo-route-filter"><span>Estados:</span>'+statusOptions.map(([id,label])=>'<label class="geo-state-choice"><input type="checkbox" data-geo-status="'+id+'" '+(selectedStatuses.has(id)?'checked':'')+'> '+label+'</label>').join('')+'</div>';
- host.innerHTML='<div class="geo-route-table-heading"><h3>Listado de rutas</h3>'+filterHtml+'</div>'+(filteredRecords.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+filteredRecords.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">No hay rutas para los estados seleccionados.</p>');
+ host.innerHTML='<div class="geo-route-table-heading"><h3>Listado de rutas</h3>'+filterHtml+'</div>'+(filteredRecords.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+pageRecords.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">No hay rutas para los estados seleccionados.</p>') +
+ (filteredRecords.length ? '<div class="actions" style="display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:12px">' +
+ '<span>' + ((geoRoutesPage-1)*GEO_ROUTES_PAGE_SIZE+1) + '–' + Math.min(geoRoutesPage*GEO_ROUTES_PAGE_SIZE,filteredRecords.length) +
+ ' de ' + filteredRecords.length + ' rutas · Página ' + geoRoutesPage + ' de ' + pageCount + '</span>' +
+ '<button type="button" id="geoRoutesPrev" ' + (geoRoutesPage===1?'disabled':'') + '>Anterior</button>' +
+ '<button type="button" id="geoRoutesNext" ' + (geoRoutesPage===pageCount?'disabled':'') + '>Siguiente</button></div>' : '');
  host.querySelectorAll('[data-geo-status]').forEach(input=>input.onchange=()=>{
   const next=new Set(selectedStatuses);
   if(input.checked)next.add(input.dataset.geoStatus);else next.delete(input.dataset.geoStatus);
-  window.geoRouteStatusFilters=next;renderStoredRoutes();
+  window.geoRouteStatusFilters=next;geoRoutesPage=1;renderStoredRoutes();
  });
  host.querySelectorAll('[data-order-id]').forEach(btn=>btn.onclick=()=>openStoredGeoOrder(btn.dataset.orderId));
  host.querySelectorAll('[data-stored-route]').forEach(btn=>btn.onclick=()=>{
@@ -2366,8 +2377,13 @@ function renderStoredRoutes(){
  host.querySelectorAll('[data-geo-sort]').forEach(btn=>btn.onclick=()=>{
   const column=btn.dataset.geoSort;
   window.geoRouteSort={column,asc:sort.column===column?!sort.asc:true};
+  geoRoutesPage=1;
   renderStoredRoutes();
  });
+ const prev=host.querySelector('#geoRoutesPrev');
+ const next=host.querySelector('#geoRoutesNext');
+ if(prev)prev.onclick=()=>{geoRoutesPage--;renderStoredRoutes();};
+ if(next)next.onclick=()=>{geoRoutesPage++;renderStoredRoutes();};
 }
 
 function initMap() {
