@@ -251,6 +251,17 @@
         <section id="ordersView" class="view panel">
             <div class="section-head">
                 <h2>Pedidos</h2>
+                <div class="actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto">
+                    <select id="ordersSeller" aria-label="Filtrar pedidos por vendedor"><option value="">Todos los vendedores</option></select>
+                    <select id="ordersDriver" aria-label="Filtrar pedidos por transportista"><option value="">Todos los transportistas</option></select>
+                    <div id="ordersStatuses" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
+                        <span>Estados:</span>
+                        <label><input type="checkbox" value="PENDIENTE" checked> Sin planificar</label>
+                        <label><input type="checkbox" value="PROGRAMADO" checked> Planificado</label>
+                        <label><input type="checkbox" value="EN REPARTO" checked> En reparto</label>
+                        <label><input type="checkbox" value="ENTREGADO"> Entregado</label>
+                    </div>
+                </div>
                 <button class="primary" id="newOrder2">
                     + Pedido
                 </button>
@@ -258,6 +269,7 @@
 
             <!-- Tabla generada por JavaScript -->
             <div id="ordersTable" class="table-wrap"></div>
+            <div id="ordersPagination" class="actions" style="display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:12px"></div>
         </section>
 
         <!-- [18] MÓDULO CLIENTES -->
