@@ -1298,3 +1298,43 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 /* Mismo tratamiento visual que los encabezados de rutas junto al mapa. */
 #geoStoredRoutes button.geo-route-link{color:inherit;text-decoration:none;font-weight:700;border-radius:7px;padding:4px 6px;transition:background-color .15s ease,color .15s ease}
 #geoStoredRoutes button.geo-route-link:hover,#geoStoredRoutes button.geo-route-link:focus-visible{background-color:#fff0df;color:inherit;text-decoration:none;outline-offset:2px}
+
+/* V6 - Identidad visual Waipara: referencia tienda online */
+:root { font-family: "Century Gothic", "Trebuchet MS", "Segoe UI", sans-serif; color:#25425b; background:#faf7f1; --waipara-orange:#ff7000; }
+body { background:#faf7f1; color:#25425b; }
+body::before { content:"";display:block;height:7px;background:var(--waipara-orange); }
+header.app-header { background:#fff; color:#25425b; padding:12px 24px; border-bottom:1px solid #eee4d8; min-height:78px; flex-wrap:nowrap; }
+header.app-header h1 {font-size:clamp(17px,1.7vw,25px);font-weight:500;margin:0;letter-spacing:.01em;}
+.header-version {font-size:.68em;color:#77818a;}
+header.app-header .actions {margin-left:auto;justify-content:flex-end;}
+header.app-header .waipara-logo {max-height:58px;width:auto;}
+.wrap {max-width:1800px;padding:12px 18px;}
+.tabs {background:#fff; margin:0 0 15px; padding:8px 12px; border-bottom:1px solid #e9dfd3; border-radius:0; gap:5px; justify-content:flex-start;}
+.tabs .tab {border:0;border-radius:5px;background:transparent;color:#f36b00;font-size:clamp(14px,1.1vw,18px);font-weight:500;padding:11px 16px;}
+.tabs .tab:hover {background:#fff0e3;color:#d85e00;}
+.tabs .tab.active {background:#ff7000;color:#fff;}
+.bar,.panel,.stat {background:#fff;border-color:#eee7de;box-shadow:0 2px 12px rgba(69,51,25,.035);}
+button.primary {background:#ff7000;border-color:#ff7000;color:#fff;}
+button.primary:hover {background:#e96500;border-color:#e96500;}
+button:not(.primary):hover {border-color:#ffab64;}
+button:focus-visible,input:focus-visible,select:focus-visible {outline:2px solid #ff8a2a;outline-offset:2px;}
+input[type=checkbox] {accent-color:#ff7000;}
+h2,h3,.section-head>b {color:#f36b00;font-weight:500;}
+.stat strong {color:#f36b00;}
+.order {border-left-color:#ff7000;}
+.drop.over {background:#fff1e5;outline-color:#ff7000;}
+#calendarView>.bar {margin-top:0;}
+#calendarView>.stats {margin-bottom:14px;}
+#calendarView .bar #week {color:#f36b00;}
+.conn {max-width:100%;}
+@media(max-width:760px) {
+ header.app-header {padding:10px 12px;flex-wrap:wrap;}
+ header.app-header .actions {margin-left:0;width:100%;}
+ header.app-header .waipara-logo {max-height:44px;}
+ .header-version {display:block;margin-top:2px;}
+ .tabs {overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin;white-space:nowrap;}
+ .tabs .tab {flex:none;padding:10px 12px;}
+ .wrap {padding:10px;}
+ #calendarView>.bar {gap:12px;}
+ #calendarView>.bar .actions {width:100%;}
+}
