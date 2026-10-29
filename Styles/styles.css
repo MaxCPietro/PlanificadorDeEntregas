@@ -1353,3 +1353,9 @@ header.app-header #logout:not(.hidden){color:white;background:transparent;border
 #app>.tabs .tab.active{background:#fff0e4;color:#ec6900}
 #app>.tabs .tab:hover{background:#fff0e4}
 @media(max-width:850px){header.app-header{padding:8px 12px}header.app-header .actions{margin-left:0}#app>.tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap}#app>.tabs .nav-logo{height:40px;margin-right:12px}#app>.tabs .tab{flex:none}}
+
+/* El borde de cada tarjeta del calendario identifica su estado, no el tema general. */
+#calendarView .order.PENDIENTE {border-left-color:#9aa6b2;}
+#calendarView .order.PROGRAMADO {border-left-color:#1769d2;}
+#calendarView .order.EN-REPARTO {border-left-color:#f5c542;}
+#calendarView .order.ENTREGADO {border-left-color:#1f9d60;}
