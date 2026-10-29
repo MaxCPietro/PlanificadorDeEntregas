@@ -494,6 +494,17 @@ function enableTableSorting(id) {
     function sortableValue(value) {
         const s = value.trim();
         if (!s || s === '—') return { type: 'empty', value: '' };
+        // Fechas de la interfaz: dd/mm/aaaa o dd/mm/aa.
+        const localDate = /^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{2}|\\d{4})(?:\\s|$)/.exec(s);
+        if (localDate) {
+            const year = Number(localDate[3].length === 2 ? '20' + localDate[3] : localDate[3]);
+            const month = Number(localDate[2]);
+            const day = Number(localDate[1]);
+            const timestamp = Date.UTC(year, month - 1, day);
+            const valid = new Date(timestamp);
+            if (valid.getUTCFullYear() === year && valid.getUTCMonth() === month - 1 && valid.getUTCDate() === day)
+                return { type: 'number', value: timestamp };
+        }
         const isoDate = s.split(' ')[0];
         if (isoDate.length === 10 && isoDate[4] === '-' && isoDate[7] === '-') {
             const timestamp = Date.parse(isoDate);
@@ -531,6 +542,11 @@ function enableTableSorting(id) {
             if (btn) btn.textContent = btn.dataset.label + (i === state.column ? (state.direction === 1 ? ' ▲' : ' ▼') : ' ↕');
             th.setAttribute('aria-sort', i === state.column ? (state.direction === 1 ? 'ascending' : 'descending') : 'none');
         });
+    }
+
+    // La tabla Pedidos inicia por fecha de entrega descendente.
+    if (id === 'ordersTable' && !uiTableSort.has(id)) {
+        uiTableSort.set(id, { column: 4, direction: -1 });
     }
 
     headers.slice(0, -1).forEach((th, i) => {
