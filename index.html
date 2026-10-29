@@ -32,27 +32,11 @@
 
 <body>
 
-    <!-- [09] CABECERA: título, descripción y estado de conexión -->
     <header class="app-header">
-        <div class="waipara-heading">
-            <img src="./Assets/IMG/logo-waipara.png" alt="Waipara Distribuidora" class="waipara-logo" onerror="this.style.display='none'">
-            <div>
-            <h1>Planificador de Entregas <span class="header-version">· Venta Minorista · V6</span></h1>
-            <!--p>
-                Base online relacional · Clientes · Vendedores ·
-                Productos · Pedidos · Mapa
-            </p-->
-            </div>
-        </div>
-
-        <!-- [09.1] Controles de conexión y cierre de sesión -->
+        <h1>Planificador de Entregas <span class="header-version">· Venta Minorista · V6</span></h1>
         <div class="actions">
-            <span id="connection" class="conn">
-                Configurá Supabase
-            </span>
-            <button id="logout" class="hidden">
-                Cerrar sesión
-            </button>
+            <span id="connection" class="conn">Configurá Supabase</span>
+            <button id="logout" class="hidden">Cerrar sesión</button>
         </div>
     </header>
 
@@ -101,6 +85,7 @@
 
         <!-- [14] NAVEGACIÓN ENTRE MÓDULOS -->
         <nav class="tabs">
+            <img src="./Assets/IMG/logo-waipara.png" alt="Waipara" class="nav-logo">
             <button class="tab active" data-view="calendarView">
                 Calendario
             </button>
