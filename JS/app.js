@@ -455,6 +455,7 @@ function render() {
     ).join('');
 
     renderCalendar();
+    populateOrdersFilters();
     renderOrders();
     renderClients();
     renderSellers();
@@ -537,6 +538,7 @@ function enableTableSorting(id) {
                 : String(x.value).localeCompare(String(y.value), 'es', { numeric: true, sensitivity: 'base' });
             return result * state.direction;
         }).forEach(row => body.append(row));
+        if (id === 'ordersTable') { ordersPage = 1; updateOrdersPagination(); }
         headers.forEach((th, i) => {
             const btn = th.querySelector('.ui-sort-btn');
             if (btn) btn.textContent = btn.dataset.label + (i === state.column ? (state.direction === 1 ? ' ▲' : ' ▼') : ' ↕');
@@ -784,8 +786,60 @@ function renderCalendar() {
    [07] TABLA GENERAL DE PEDIDOS
    ============================================================ */
 
+const ORDERS_PAGE_SIZE = 20;
+let ordersPage = 1;
+
+function populateOrdersFilters() {
+    const seller = $('#ordersSeller');
+    const oldSeller = seller.value;
+    const sellers = [...cache.vendedores].sort((a,b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+    seller.innerHTML = '<option value="">Todos los vendedores</option>' +
+        sellers.map(v => `<option value="${esc(v.id)}">${esc(v.nombre)}</option>`).join('');
+    seller.value = [...seller.options].some(o => o.value === oldSeller) ? oldSeller : '';
+
+    const driver = $('#ordersDriver');
+    const oldDriver = driver.value;
+    const drivers = [...new Set(cache.pedidos.map(p => p.transportista).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'es'));
+    driver.innerHTML = '<option value="">Todos los transportistas</option>' +
+        drivers.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    driver.value = [...driver.options].some(o => o.value === oldDriver) ? oldDriver : '';
+}
+
+function updateOrdersPagination() {
+    const body = document.querySelector('#ordersTable tbody');
+    const host = $('#ordersPagination');
+    if (!body || !host) return;
+    const rows = [...body.rows];
+    const pages = Math.max(1, Math.ceil(rows.length / ORDERS_PAGE_SIZE));
+    ordersPage = Math.min(Math.max(1, ordersPage), pages);
+    rows.forEach((row, i) => {
+        row.hidden = i < (ordersPage - 1) * ORDERS_PAGE_SIZE || i >= ordersPage * ORDERS_PAGE_SIZE;
+    });
+    const from = rows.length ? (ordersPage - 1) * ORDERS_PAGE_SIZE + 1 : 0;
+    const to = Math.min(ordersPage * ORDERS_PAGE_SIZE, rows.length);
+    host.innerHTML = `<span>${from}–${to} de ${rows.length} pedidos · Página ${ordersPage} de ${pages}</span>
+        <button type="button" id="ordersPrevPage" ${ordersPage === 1 ? 'disabled' : ''}>Anterior</button>
+        <button type="button" id="ordersNextPage" ${ordersPage === pages ? 'disabled' : ''}>Siguiente</button>`;
+    $('#ordersPrevPage').onclick = () => { ordersPage--; updateOrdersPagination(); };
+    $('#ordersNextPage').onclick = () => { ordersPage++; updateOrdersPagination(); };
+}
+
+['#ordersSeller', '#ordersDriver'].forEach(selector => {
+    $(selector).addEventListener('change', () => { ordersPage = 1; renderOrders(); });
+});
+document.querySelectorAll('#ordersStatuses input').forEach(input =>
+    input.addEventListener('change', () => { ordersPage = 1; renderOrders(); })
+);
+
 function renderOrders() {
-    const rows = filtered();
+    const seller = $('#ordersSeller').value;
+    const driver = $('#ordersDriver').value;
+    const statuses = new Set([...document.querySelectorAll('#ordersStatuses input:checked')].map(x => x.value));
+    const rows = cache.pedidos.filter(p =>
+        (!seller || String(p.vendedor_id) === seller) &&
+        (!driver || (p.transportista || '') === driver) &&
+        statuses.has(p.estado)
+    );
 
     $('#ordersTable').innerHTML = `
         <table>
@@ -825,6 +879,7 @@ function renderOrders() {
     `;
 
     enableTableSorting('ordersTable');
+    updateOrdersPagination();
     $('#ordersTable')
         .querySelectorAll('[data-edit-order]')
         .forEach(b => {
