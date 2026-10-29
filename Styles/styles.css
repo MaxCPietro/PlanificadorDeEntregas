@@ -1338,3 +1338,18 @@ h2,h3,.section-head>b {color:#f36b00;font-weight:500;}
  #calendarView>.bar {gap:12px;}
  #calendarView>.bar .actions {width:100%;}
 }
+
+body::before{display:none}
+header.app-header{background:#ff7000;color:white;min-height:44px;padding:7px 22px;border:0;gap:16px;flex-wrap:wrap}
+header.app-header h1{color:white;font-size:clamp(15px,1.2vw,19px);font-weight:600;margin:0}
+header.app-header .header-version{color:#fff4e9;font-size:.85em}
+header.app-header .actions{gap:12px}
+header.app-header .conn{color:white;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:5px 10px}
+header.app-header #logout:not(.hidden){color:white;background:transparent;border:1px solid white;padding:5px 12px}
+#app.wrap{max-width:none;padding:0 12px 18px}
+#app>.tabs{display:flex;align-items:center;gap:10px;background:white;border-bottom:1px solid #e8e2db;border-radius:0;padding:7px 12px;margin:0 -12px 12px;min-height:67px}
+#app>.tabs .nav-logo{height:48px;width:auto;max-width:95px;object-fit:contain;margin-right:auto;flex:none}
+#app>.tabs .tab{font-size:clamp(13px,1.05vw,18px);padding:10px 12px}
+#app>.tabs .tab.active{background:#fff0e4;color:#ec6900}
+#app>.tabs .tab:hover{background:#fff0e4}
+@media(max-width:850px){header.app-header{padding:8px 12px}header.app-header .actions{margin-left:0}#app>.tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap}#app>.tabs .nav-logo{height:40px;margin-right:12px}#app>.tabs .tab{flex:none}}
