@@ -1359,3 +1359,7 @@ header.app-header #logout:not(.hidden){color:white;background:transparent;border
 #calendarView .order.PROGRAMADO {border-left-color:#1769d2;}
 #calendarView .order.EN-REPARTO {border-left-color:#f5c542;}
 #calendarView .order.ENTREGADO {border-left-color:#1f9d60;}
+
+/* Checks de selección de rutas y pedidos: azul pizarra de la referencia. */
+#mapView input[type="checkbox"],
+#geoStoredRoutes input[type="checkbox"] { accent-color: #506F8D; }
