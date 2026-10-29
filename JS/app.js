@@ -495,7 +495,7 @@ function enableTableSorting(id) {
         const s = value.trim();
         if (!s || s === '—') return { type: 'empty', value: '' };
         // Fechas de la interfaz: dd/mm/aaaa o dd/mm/aa.
-        const localDate = /^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{2}|\\d{4})(?:\\s|$)/.exec(s);
+        const localDate = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})(?:\s|$)/.exec(s);
         if (localDate) {
             const year = Number(localDate[3].length === 2 ? '20' + localDate[3] : localDate[3]);
             const month = Number(localDate[2]);
@@ -528,8 +528,8 @@ function enableTableSorting(id) {
         if (!state) return;
         const body = table.tBodies[0];
         [...body.rows].sort((a, b) => {
-            const x = sortableValue(a.cells[state.column]?.textContent || '');
-            const y = sortableValue(b.cells[state.column]?.textContent || '');
+            const x = sortableValue(a.cells[state.column]?.dataset.sortValue ?? a.cells[state.column]?.textContent ?? '');
+            const y = sortableValue(b.cells[state.column]?.dataset.sortValue ?? b.cells[state.column]?.textContent ?? '');
             if (x.type === 'empty' && y.type !== 'empty') return 1;
             if (y.type === 'empty' && x.type !== 'empty') return -1;
             const result = x.type === 'number' && y.type === 'number'
@@ -809,8 +809,8 @@ function renderOrders() {
                         <td>${esc(p.numero)}</td>
                         <td>${esc(nameOf('clientes', p.cliente_id))}</td>
                         <td>${esc(nameOf('vendedores', p.vendedor_id))}</td>
-                        <td>${esc(formatDate(p.fecha_pedido))}</td>
-                        <td>${esc(formatDate(p.fecha_entrega))}</td>
+                        <td data-sort-value="${esc(p.fecha_pedido || '')}">${esc(formatDate(p.fecha_pedido))}</td>
+                        <td data-sort-value="${esc(p.fecha_entrega || '')}">${esc(formatDate(p.fecha_entrega))}</td>
                         <td>${statusBadge(p.estado)}</td>
                         <td>${esc(p.transportista || '—')}</td>
                         <td><strong>${bultos(p).toLocaleString('es-AR')}</strong></td>
