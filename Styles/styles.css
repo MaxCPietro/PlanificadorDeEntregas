@@ -1363,3 +1363,6 @@ header.app-header #logout:not(.hidden){color:white;background:transparent;border
 /* Checks de selección de rutas y pedidos: azul pizarra de la referencia. */
 #mapView input[type="checkbox"],
 #geoStoredRoutes input[type="checkbox"] { accent-color: #506F8D; }
+
+/* Filtros seleccionables de estados en la lista de pedidos. */
+#ordersStatuses input[type="checkbox"] { accent-color: #506F8D; }
