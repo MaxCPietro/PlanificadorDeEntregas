@@ -539,6 +539,7 @@ function enableTableSorting(id) {
             return result * state.direction;
         }).forEach(row => body.append(row));
         if (id === 'ordersTable') { ordersPage = 1; updateOrdersPagination(); }
+        if (id === 'clientsTable') { clientsPage = 1; updateClientsPagination(); }
         headers.forEach((th, i) => {
             const btn = th.querySelector('.ui-sort-btn');
             if (btn) btn.textContent = btn.dataset.label + (i === state.column ? (state.direction === 1 ? ' ▲' : ' ▼') : ' ↕');
@@ -892,6 +893,28 @@ function renderOrders() {
    [08] TABLAS DE CLIENTES, VENDEDORES Y PRODUCTOS
    ============================================================ */
 
+const CLIENTS_PAGE_SIZE = 20;
+let clientsPage = 1;
+
+function updateClientsPagination() {
+    const body = document.querySelector('#clientsTable tbody');
+    const host = $('#clientsPagination');
+    if (!body || !host) return;
+    const rows = [...body.rows];
+    const pages = Math.max(1, Math.ceil(rows.length / CLIENTS_PAGE_SIZE));
+    clientsPage = Math.min(Math.max(1, clientsPage), pages);
+    rows.forEach((row, i) => {
+        row.hidden = i < (clientsPage - 1) * CLIENTS_PAGE_SIZE || i >= clientsPage * CLIENTS_PAGE_SIZE;
+    });
+    const from = rows.length ? (clientsPage - 1) * CLIENTS_PAGE_SIZE + 1 : 0;
+    const to = Math.min(clientsPage * CLIENTS_PAGE_SIZE, rows.length);
+    host.innerHTML = `<span>${from}–${to} de ${rows.length} clientes · Página ${clientsPage} de ${pages}</span>
+        <button type="button" id="clientsPrevPage" ${clientsPage === 1 ? 'disabled' : ''}>Anterior</button>
+        <button type="button" id="clientsNextPage" ${clientsPage === pages ? 'disabled' : ''}>Siguiente</button>`;
+    $('#clientsPrevPage').onclick = () => { clientsPage--; updateClientsPagination(); };
+    $('#clientsNextPage').onclick = () => { clientsPage++; updateClientsPagination(); };
+}
+
 function renderClients() {
     const cols = [
         ['id', 'ID'],
@@ -919,7 +942,7 @@ function renderClients() {
             cols.map(([key, label]) =>
                 `<option value="${key}">${esc(label)}</option>`
             ).join('');
-        fieldSelect.addEventListener('change', renderClients);
+        fieldSelect.addEventListener('change', () => { clientsPage = 1; renderClients(); });
         fieldSelect.dataset.initialized = 'true';
     }
 
@@ -975,11 +998,12 @@ function renderClients() {
 
     const searchInput = $('#clientSearch');
     if (searchInput && !searchInput.dataset.filterBound) {
-        searchInput.addEventListener('input', () => renderClients());
+        searchInput.addEventListener('input', () => { clientsPage = 1; renderClients(); });
         searchInput.dataset.filterBound = 'true';
     }
 
     enableTableSorting('clientsTable');
+    updateClientsPagination();
     wireEntityButtons();
 }
 
