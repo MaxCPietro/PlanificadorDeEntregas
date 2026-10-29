@@ -10,23 +10,21 @@ Version 6 (Cambios Menores)
     Ok 8) Guardar en base de datos.
     OK 9) Que pemita marcar y desmarcar pedidos individualmente
     OK 10) Que distinga cuando el pedido se retira del deposito.
-2) Sacar los fitros de arriba y ponerlos donde correspondan en cada subsección.
-3) Base de datos de clientes
-    1) Poder Eliminar Clientes
-4) Que cargue el vendedor automáticamente
-5) Cargar los precios y que los traiga automáticamente.
-7) Cambiar medio de autenticación de Daniel
-8) Paginacion
+OK 2) Sacar los fitros de arriba y ponerlos donde correspondan en cada subsección.
+OK 3) Paginacion
+
+Version 6.1
+* Base de datos de clientes
+* Gestion de Pedidos.
+    * Que cargue el vendedor automáticamente
+*  Cargar los precios y que los traiga automáticamente y los permita modificar
+
+Version 7
+* Control de Stock
 
 Version 7
 * Migrar a Base de datos de DonWeb
 * Publicar la app en DonWeb
-
-Version 8
-* Control de Stock
-
-Version 9
-* Gestion de Venta Minorista
 
 Version 9
 * Modulo de Seguridad

@@ -455,6 +455,7 @@ function render() {
     ).join('');
 
     renderCalendar();
+    populateOrdersFilters();
     renderOrders();
     renderClients();
     renderSellers();
@@ -494,6 +495,17 @@ function enableTableSorting(id) {
     function sortableValue(value) {
         const s = value.trim();
         if (!s || s === '—') return { type: 'empty', value: '' };
+        // Fechas de la interfaz: dd/mm/aaaa o dd/mm/aa.
+        const localDate = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})(?:\s|$)/.exec(s);
+        if (localDate) {
+            const year = Number(localDate[3].length === 2 ? '20' + localDate[3] : localDate[3]);
+            const month = Number(localDate[2]);
+            const day = Number(localDate[1]);
+            const timestamp = Date.UTC(year, month - 1, day);
+            const valid = new Date(timestamp);
+            if (valid.getUTCFullYear() === year && valid.getUTCMonth() === month - 1 && valid.getUTCDate() === day)
+                return { type: 'number', value: timestamp };
+        }
         const isoDate = s.split(' ')[0];
         if (isoDate.length === 10 && isoDate[4] === '-' && isoDate[7] === '-') {
             const timestamp = Date.parse(isoDate);
@@ -517,8 +529,8 @@ function enableTableSorting(id) {
         if (!state) return;
         const body = table.tBodies[0];
         [...body.rows].sort((a, b) => {
-            const x = sortableValue(a.cells[state.column]?.textContent || '');
-            const y = sortableValue(b.cells[state.column]?.textContent || '');
+            const x = sortableValue(a.cells[state.column]?.dataset.sortValue ?? a.cells[state.column]?.textContent ?? '');
+            const y = sortableValue(b.cells[state.column]?.dataset.sortValue ?? b.cells[state.column]?.textContent ?? '');
             if (x.type === 'empty' && y.type !== 'empty') return 1;
             if (y.type === 'empty' && x.type !== 'empty') return -1;
             const result = x.type === 'number' && y.type === 'number'
@@ -526,11 +538,18 @@ function enableTableSorting(id) {
                 : String(x.value).localeCompare(String(y.value), 'es', { numeric: true, sensitivity: 'base' });
             return result * state.direction;
         }).forEach(row => body.append(row));
+        if (id === 'ordersTable') { ordersPage = 1; updateOrdersPagination(); }
+        if (id === 'clientsTable') { clientsPage = 1; updateClientsPagination(); }
         headers.forEach((th, i) => {
             const btn = th.querySelector('.ui-sort-btn');
             if (btn) btn.textContent = btn.dataset.label + (i === state.column ? (state.direction === 1 ? ' ▲' : ' ▼') : ' ↕');
             th.setAttribute('aria-sort', i === state.column ? (state.direction === 1 ? 'ascending' : 'descending') : 'none');
         });
+    }
+
+    // La tabla Pedidos inicia por fecha de entrega descendente.
+    if (id === 'ordersTable' && !uiTableSort.has(id)) {
+        uiTableSort.set(id, { column: 4, direction: -1 });
     }
 
     headers.slice(0, -1).forEach((th, i) => {
@@ -768,8 +787,60 @@ function renderCalendar() {
    [07] TABLA GENERAL DE PEDIDOS
    ============================================================ */
 
+const ORDERS_PAGE_SIZE = 20;
+let ordersPage = 1;
+
+function populateOrdersFilters() {
+    const seller = $('#ordersSeller');
+    const oldSeller = seller.value;
+    const sellers = [...cache.vendedores].sort((a,b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'));
+    seller.innerHTML = '<option value="">Todos los vendedores</option>' +
+        sellers.map(v => `<option value="${esc(v.id)}">${esc(v.nombre)}</option>`).join('');
+    seller.value = [...seller.options].some(o => o.value === oldSeller) ? oldSeller : '';
+
+    const driver = $('#ordersDriver');
+    const oldDriver = driver.value;
+    const drivers = [...new Set(cache.pedidos.map(p => p.transportista).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'es'));
+    driver.innerHTML = '<option value="">Todos los transportistas</option>' +
+        drivers.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    driver.value = [...driver.options].some(o => o.value === oldDriver) ? oldDriver : '';
+}
+
+function updateOrdersPagination() {
+    const body = document.querySelector('#ordersTable tbody');
+    const host = $('#ordersPagination');
+    if (!body || !host) return;
+    const rows = [...body.rows];
+    const pages = Math.max(1, Math.ceil(rows.length / ORDERS_PAGE_SIZE));
+    ordersPage = Math.min(Math.max(1, ordersPage), pages);
+    rows.forEach((row, i) => {
+        row.hidden = i < (ordersPage - 1) * ORDERS_PAGE_SIZE || i >= ordersPage * ORDERS_PAGE_SIZE;
+    });
+    const from = rows.length ? (ordersPage - 1) * ORDERS_PAGE_SIZE + 1 : 0;
+    const to = Math.min(ordersPage * ORDERS_PAGE_SIZE, rows.length);
+    host.innerHTML = `<span>${from}–${to} de ${rows.length} pedidos · Página ${ordersPage} de ${pages}</span>
+        <button type="button" id="ordersPrevPage" ${ordersPage === 1 ? 'disabled' : ''}>Anterior</button>
+        <button type="button" id="ordersNextPage" ${ordersPage === pages ? 'disabled' : ''}>Siguiente</button>`;
+    $('#ordersPrevPage').onclick = () => { ordersPage--; updateOrdersPagination(); };
+    $('#ordersNextPage').onclick = () => { ordersPage++; updateOrdersPagination(); };
+}
+
+['#ordersSeller', '#ordersDriver'].forEach(selector => {
+    $(selector).addEventListener('change', () => { ordersPage = 1; renderOrders(); });
+});
+document.querySelectorAll('#ordersStatuses input').forEach(input =>
+    input.addEventListener('change', () => { ordersPage = 1; renderOrders(); })
+);
+
 function renderOrders() {
-    const rows = filtered();
+    const seller = $('#ordersSeller').value;
+    const driver = $('#ordersDriver').value;
+    const statuses = new Set([...document.querySelectorAll('#ordersStatuses input:checked')].map(x => x.value));
+    const rows = cache.pedidos.filter(p =>
+        (!seller || String(p.vendedor_id) === seller) &&
+        (!driver || (p.transportista || '') === driver) &&
+        statuses.has(p.estado)
+    );
 
     $('#ordersTable').innerHTML = `
         <table>
@@ -793,8 +864,8 @@ function renderOrders() {
                         <td>${esc(p.numero)}</td>
                         <td>${esc(nameOf('clientes', p.cliente_id))}</td>
                         <td>${esc(nameOf('vendedores', p.vendedor_id))}</td>
-                        <td>${esc(formatDate(p.fecha_pedido))}</td>
-                        <td>${esc(formatDate(p.fecha_entrega))}</td>
+                        <td data-sort-value="${esc(p.fecha_pedido || '')}">${esc(formatDate(p.fecha_pedido))}</td>
+                        <td data-sort-value="${esc(p.fecha_entrega || '')}">${esc(formatDate(p.fecha_entrega))}</td>
                         <td>${statusBadge(p.estado)}</td>
                         <td>${esc(p.transportista || '—')}</td>
                         <td><strong>${bultos(p).toLocaleString('es-AR')}</strong></td>
@@ -809,6 +880,7 @@ function renderOrders() {
     `;
 
     enableTableSorting('ordersTable');
+    updateOrdersPagination();
     $('#ordersTable')
         .querySelectorAll('[data-edit-order]')
         .forEach(b => {
@@ -820,6 +892,28 @@ function renderOrders() {
 /* ============================================================
    [08] TABLAS DE CLIENTES, VENDEDORES Y PRODUCTOS
    ============================================================ */
+
+const CLIENTS_PAGE_SIZE = 20;
+let clientsPage = 1;
+
+function updateClientsPagination() {
+    const body = document.querySelector('#clientsTable tbody');
+    const host = $('#clientsPagination');
+    if (!body || !host) return;
+    const rows = [...body.rows];
+    const pages = Math.max(1, Math.ceil(rows.length / CLIENTS_PAGE_SIZE));
+    clientsPage = Math.min(Math.max(1, clientsPage), pages);
+    rows.forEach((row, i) => {
+        row.hidden = i < (clientsPage - 1) * CLIENTS_PAGE_SIZE || i >= clientsPage * CLIENTS_PAGE_SIZE;
+    });
+    const from = rows.length ? (clientsPage - 1) * CLIENTS_PAGE_SIZE + 1 : 0;
+    const to = Math.min(clientsPage * CLIENTS_PAGE_SIZE, rows.length);
+    host.innerHTML = `<span>${from}–${to} de ${rows.length} clientes · Página ${clientsPage} de ${pages}</span>
+        <button type="button" id="clientsPrevPage" ${clientsPage === 1 ? 'disabled' : ''}>Anterior</button>
+        <button type="button" id="clientsNextPage" ${clientsPage === pages ? 'disabled' : ''}>Siguiente</button>`;
+    $('#clientsPrevPage').onclick = () => { clientsPage--; updateClientsPagination(); };
+    $('#clientsNextPage').onclick = () => { clientsPage++; updateClientsPagination(); };
+}
 
 function renderClients() {
     const cols = [
@@ -848,7 +942,7 @@ function renderClients() {
             cols.map(([key, label]) =>
                 `<option value="${key}">${esc(label)}</option>`
             ).join('');
-        fieldSelect.addEventListener('change', renderClients);
+        fieldSelect.addEventListener('change', () => { clientsPage = 1; renderClients(); });
         fieldSelect.dataset.initialized = 'true';
     }
 
@@ -904,11 +998,12 @@ function renderClients() {
 
     const searchInput = $('#clientSearch');
     if (searchInput && !searchInput.dataset.filterBound) {
-        searchInput.addEventListener('input', () => renderClients());
+        searchInput.addEventListener('input', () => { clientsPage = 1; renderClients(); });
         searchInput.dataset.filterBound = 'true';
     }
 
     enableTableSorting('clientsTable');
+    updateClientsPagination();
     wireEntityButtons();
 }
 
@@ -2190,6 +2285,9 @@ async function openStoredGeoOrder(id) {
   setGeoOrderReadOnly(true);
  }catch(e){toast('No se pudo recuperar el pedido: '+e.message);}
 }
+const GEO_ROUTES_PAGE_SIZE = 20;
+let geoRoutesPage = 1;
+
 function renderStoredRoutes(){
  const host=document.getElementById('geoStoredRoutes');
  if(!host)return;
@@ -2253,15 +2351,23 @@ function renderStoredRoutes(){
   const cmp=typeof av==='number'&&typeof bv==='number'?av-bv:String(av).localeCompare(String(bv),'es',{numeric:true});
   return sort.asc?cmp:-cmp;
  });
+ const pageCount=Math.max(1,Math.ceil(filteredRecords.length/GEO_ROUTES_PAGE_SIZE));
+ geoRoutesPage=Math.min(Math.max(1,geoRoutesPage),pageCount);
+ const pageRecords=filteredRecords.slice((geoRoutesPage-1)*GEO_ROUTES_PAGE_SIZE,geoRoutesPage*GEO_ROUTES_PAGE_SIZE);
  const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['paradas','Paradas'],['pedidos','# Pedidos'],['bultos','Σ Bultos'],['estado','Estado'],['km','Σ Km Aprox'],['litros','Σ Litros Aprox'],['costo','$ Aprox'],['resumen','Resumen']];
  const headers=columns.map(([id,label])=>'<th><button type="button" class="geo-sort" data-geo-sort="'+id+'" aria-label="Ordenar por '+label+'">'+label+' '+(sort.column===id?(sort.asc?'▲':'▼'):'↕')+'</button></th>').join('');
  const statusOptions=[['PENDIENTE','Sin planificar'],['PROGRAMADO','Planificado'],['EN REPARTO','En reparto'],['ENTREGADO','Entregado']];
  const filterHtml='<div class="geo-route-filter"><span>Estados:</span>'+statusOptions.map(([id,label])=>'<label class="geo-state-choice"><input type="checkbox" data-geo-status="'+id+'" '+(selectedStatuses.has(id)?'checked':'')+'> '+label+'</label>').join('')+'</div>';
- host.innerHTML='<div class="geo-route-table-heading"><h3>Listado de rutas</h3>'+filterHtml+'</div>'+(filteredRecords.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+filteredRecords.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">No hay rutas para los estados seleccionados.</p>');
+ host.innerHTML='<div class="geo-route-table-heading"><h3>Listado de rutas</h3>'+filterHtml+'</div>'+(filteredRecords.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+pageRecords.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">No hay rutas para los estados seleccionados.</p>') +
+ (filteredRecords.length ? '<div class="actions" style="display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:12px">' +
+ '<span>' + ((geoRoutesPage-1)*GEO_ROUTES_PAGE_SIZE+1) + '–' + Math.min(geoRoutesPage*GEO_ROUTES_PAGE_SIZE,filteredRecords.length) +
+ ' de ' + filteredRecords.length + ' rutas · Página ' + geoRoutesPage + ' de ' + pageCount + '</span>' +
+ '<button type="button" id="geoRoutesPrev" ' + (geoRoutesPage===1?'disabled':'') + '>Anterior</button>' +
+ '<button type="button" id="geoRoutesNext" ' + (geoRoutesPage===pageCount?'disabled':'') + '>Siguiente</button></div>' : '');
  host.querySelectorAll('[data-geo-status]').forEach(input=>input.onchange=()=>{
   const next=new Set(selectedStatuses);
   if(input.checked)next.add(input.dataset.geoStatus);else next.delete(input.dataset.geoStatus);
-  window.geoRouteStatusFilters=next;renderStoredRoutes();
+  window.geoRouteStatusFilters=next;geoRoutesPage=1;renderStoredRoutes();
  });
  host.querySelectorAll('[data-order-id]').forEach(btn=>btn.onclick=()=>openStoredGeoOrder(btn.dataset.orderId));
  host.querySelectorAll('[data-stored-route]').forEach(btn=>btn.onclick=()=>{
@@ -2271,8 +2377,13 @@ function renderStoredRoutes(){
  host.querySelectorAll('[data-geo-sort]').forEach(btn=>btn.onclick=()=>{
   const column=btn.dataset.geoSort;
   window.geoRouteSort={column,asc:sort.column===column?!sort.asc:true};
+  geoRoutesPage=1;
   renderStoredRoutes();
  });
+ const prev=host.querySelector('#geoRoutesPrev');
+ const next=host.querySelector('#geoRoutesNext');
+ if(prev)prev.onclick=()=>{geoRoutesPage--;renderStoredRoutes();};
+ if(next)next.onclick=()=>{geoRoutesPage++;renderStoredRoutes();};
 }
 
 function initMap() {

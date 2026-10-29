@@ -32,27 +32,11 @@
 
 <body>
 
-    <!-- [09] CABECERA: título, descripción y estado de conexión -->
-    <header>
-        <div class="waipara-heading">
-            <img src="./Assets/IMG/logo-waipara.png" alt="Waipara Distribuidora" class="waipara-logo" onerror="this.style.display='none'">
-            <div>
-            <h1>Planificador de Entregas · Venta Minorista · V6</h1>
-            <!--p>
-                Base online relacional · Clientes · Vendedores ·
-                Productos · Pedidos · Mapa
-            </p-->
-            </div>
-        </div>
-
-        <!-- [09.1] Controles de conexión y cierre de sesión -->
+    <header class="app-header">
+        <h1>Planificador de Entregas <span class="header-version">· Venta Minorista · V6</span></h1>
         <div class="actions">
-            <span id="connection" class="conn">
-                Configurá Supabase
-            </span>
-            <button id="logout" class="hidden">
-                Cerrar sesión
-            </button>
+            <span id="connection" class="conn">Configurá Supabase</span>
+            <button id="logout" class="hidden">Cerrar sesión</button>
         </div>
     </header>
 
@@ -99,6 +83,31 @@
     <main id="app" class="wrap hidden">
 
 
+        <!-- [14] NAVEGACIÓN ENTRE MÓDULOS -->
+        <nav class="tabs">
+            <img src="./Assets/IMG/logo-waipara.png" alt="Waipara" class="nav-logo">
+            <button class="tab active" data-view="calendarView">
+                Calendario
+            </button>
+            <button class="tab" data-view="mapView">
+                Mapa de pendientes
+            </button>
+            <button class="tab" data-view="ordersView">
+                Pedidos
+            </button>
+            <button class="tab" data-view="clientsView">
+                Clientes
+            </button>
+            <button class="tab" data-view="sellersView">
+                Vendedores
+            </button>
+            <button class="tab" data-view="productsView">
+                Productos
+            </button>
+        </nav>
+
+        <!-- [15] MÓDULO CALENDARIO DE ENTREGAS -->
+        <section id="calendarView" class="view active">
         <!-- [12] BARRA DE HERRAMIENTAS Y FILTROS -->
         <div class="bar">
 
@@ -142,30 +151,7 @@
         <!-- JavaScript genera las estadísticas dentro de este contenedor -->
         <section id="stats" class="stats"></section>
 
-        <!-- [14] NAVEGACIÓN ENTRE MÓDULOS -->
-        <nav class="tabs">
-            <button class="tab active" data-view="calendarView">
-                Calendario
-            </button>
-            <button class="tab" data-view="mapView">
-                Mapa de pendientes
-            </button>
-            <button class="tab" data-view="ordersView">
-                Pedidos
-            </button>
-            <button class="tab" data-view="clientsView">
-                Clientes
-            </button>
-            <button class="tab" data-view="sellersView">
-                Vendedores
-            </button>
-            <button class="tab" data-view="productsView">
-                Productos
-            </button>
-        </nav>
 
-        <!-- [15] MÓDULO CALENDARIO DE ENTREGAS -->
-        <section id="calendarView" class="view active">
 
             <div class="planner">
 
@@ -251,6 +237,17 @@
         <section id="ordersView" class="view panel">
             <div class="section-head">
                 <h2>Pedidos</h2>
+                <div class="actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-left:auto">
+                    <select id="ordersSeller" aria-label="Filtrar pedidos por vendedor"><option value="">Todos los vendedores</option></select>
+                    <select id="ordersDriver" aria-label="Filtrar pedidos por transportista"><option value="">Todos los transportistas</option></select>
+                    <div id="ordersStatuses" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
+                        <span>Estados:</span>
+                        <label><input type="checkbox" value="PENDIENTE" checked> Sin planificar</label>
+                        <label><input type="checkbox" value="PROGRAMADO" checked> Planificado</label>
+                        <label><input type="checkbox" value="EN REPARTO" checked> En reparto</label>
+                        <label><input type="checkbox" value="ENTREGADO"> Entregado</label>
+                    </div>
+                </div>
                 <button class="primary" id="newOrder2">
                     + Pedido
                 </button>
@@ -258,6 +255,7 @@
 
             <!-- Tabla generada por JavaScript -->
             <div id="ordersTable" class="table-wrap"></div>
+            <div id="ordersPagination" class="actions" style="display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:12px"></div>
         </section>
 
         <!-- [18] MÓDULO CLIENTES -->
@@ -275,6 +273,7 @@
             </div>
             <div id="clientSearchCount" aria-live="polite" style="margin-bottom:10px;font-size:13px"></div>
             <div id="clientsTable" class="table-wrap"></div>
+            <div id="clientsPagination" class="actions" style="display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:12px"></div>
         </section>
 
         <!-- [19] MÓDULO VENDEDORES -->

@@ -1298,3 +1298,71 @@ header #logout{background:#fff!important;color:#172534!important;border:1px soli
 /* Mismo tratamiento visual que los encabezados de rutas junto al mapa. */
 #geoStoredRoutes button.geo-route-link{color:inherit;text-decoration:none;font-weight:700;border-radius:7px;padding:4px 6px;transition:background-color .15s ease,color .15s ease}
 #geoStoredRoutes button.geo-route-link:hover,#geoStoredRoutes button.geo-route-link:focus-visible{background-color:#fff0df;color:inherit;text-decoration:none;outline-offset:2px}
+
+/* V6 - Identidad visual Waipara: referencia tienda online */
+:root { font-family: "Century Gothic", "Trebuchet MS", "Segoe UI", sans-serif; color:#25425b; background:#faf7f1; --waipara-orange:#ff7000; }
+body { background:#faf7f1; color:#25425b; }
+body::before { content:"";display:block;height:7px;background:var(--waipara-orange); }
+header.app-header { background:#fff; color:#25425b; padding:12px 24px; border-bottom:1px solid #eee4d8; min-height:78px; flex-wrap:nowrap; }
+header.app-header h1 {font-size:clamp(17px,1.7vw,25px);font-weight:500;margin:0;letter-spacing:.01em;}
+.header-version {font-size:.68em;color:#77818a;}
+header.app-header .actions {margin-left:auto;justify-content:flex-end;}
+header.app-header .waipara-logo {max-height:58px;width:auto;}
+.wrap {max-width:1800px;padding:12px 18px;}
+.tabs {background:#fff; margin:0 0 15px; padding:8px 12px; border-bottom:1px solid #e9dfd3; border-radius:0; gap:5px; justify-content:flex-start;}
+.tabs .tab {border:0;border-radius:5px;background:transparent;color:#f36b00;font-size:clamp(14px,1.1vw,18px);font-weight:500;padding:11px 16px;}
+.tabs .tab:hover {background:#fff0e3;color:#d85e00;}
+.tabs .tab.active {background:#ff7000;color:#fff;}
+.bar,.panel,.stat {background:#fff;border-color:#eee7de;box-shadow:0 2px 12px rgba(69,51,25,.035);}
+button.primary {background:#ff7000;border-color:#ff7000;color:#fff;}
+button.primary:hover {background:#e96500;border-color:#e96500;}
+button:not(.primary):hover {border-color:#ffab64;}
+button:focus-visible,input:focus-visible,select:focus-visible {outline:2px solid #ff8a2a;outline-offset:2px;}
+input[type=checkbox] {accent-color:#ff7000;}
+h2,h3,.section-head>b {color:#f36b00;font-weight:500;}
+.stat strong {color:#f36b00;}
+.order {border-left-color:#ff7000;}
+.drop.over {background:#fff1e5;outline-color:#ff7000;}
+#calendarView>.bar {margin-top:0;}
+#calendarView>.stats {margin-bottom:14px;}
+#calendarView .bar #week {color:#f36b00;}
+.conn {max-width:100%;}
+@media(max-width:760px) {
+ header.app-header {padding:10px 12px;flex-wrap:wrap;}
+ header.app-header .actions {margin-left:0;width:100%;}
+ header.app-header .waipara-logo {max-height:44px;}
+ .header-version {display:block;margin-top:2px;}
+ .tabs {overflow-x:auto;flex-wrap:nowrap;scrollbar-width:thin;white-space:nowrap;}
+ .tabs .tab {flex:none;padding:10px 12px;}
+ .wrap {padding:10px;}
+ #calendarView>.bar {gap:12px;}
+ #calendarView>.bar .actions {width:100%;}
+}
+
+body::before{display:none}
+header.app-header{background:#ff7000;color:white;min-height:44px;padding:7px 22px;border:0;gap:16px;flex-wrap:wrap}
+header.app-header h1{color:white;font-size:clamp(15px,1.2vw,19px);font-weight:600;margin:0}
+header.app-header .header-version{color:#fff4e9;font-size:.85em}
+header.app-header .actions{gap:12px}
+header.app-header .conn{color:white;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.35);border-radius:20px;padding:5px 10px}
+header.app-header #logout:not(.hidden){color:white;background:transparent;border:1px solid white;padding:5px 12px}
+#app.wrap{max-width:none;padding:0 12px 18px}
+#app>.tabs{display:flex;align-items:center;gap:10px;background:white;border-bottom:1px solid #e8e2db;border-radius:0;padding:7px 12px;margin:0 -12px 12px;min-height:67px}
+#app>.tabs .nav-logo{height:48px;width:auto;max-width:95px;object-fit:contain;margin-right:auto;flex:none}
+#app>.tabs .tab{font-size:clamp(13px,1.05vw,18px);padding:10px 12px}
+#app>.tabs .tab.active{background:#fff0e4;color:#ec6900}
+#app>.tabs .tab:hover{background:#fff0e4}
+@media(max-width:850px){header.app-header{padding:8px 12px}header.app-header .actions{margin-left:0}#app>.tabs{overflow-x:auto;flex-wrap:nowrap;white-space:nowrap}#app>.tabs .nav-logo{height:40px;margin-right:12px}#app>.tabs .tab{flex:none}}
+
+/* El borde de cada tarjeta del calendario identifica su estado, no el tema general. */
+#calendarView .order.PENDIENTE {border-left-color:#9aa6b2;}
+#calendarView .order.PROGRAMADO {border-left-color:#1769d2;}
+#calendarView .order.EN-REPARTO {border-left-color:#f5c542;}
+#calendarView .order.ENTREGADO {border-left-color:#1f9d60;}
+
+/* Checks de selección de rutas y pedidos: azul pizarra de la referencia. */
+#mapView input[type="checkbox"],
+#geoStoredRoutes input[type="checkbox"] { accent-color: #506F8D; }
+
+/* Filtros seleccionables de estados en la lista de pedidos. */
+#ordersStatuses input[type="checkbox"] { accent-color: #506F8D; }
