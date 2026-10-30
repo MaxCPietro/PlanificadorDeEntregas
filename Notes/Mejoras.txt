@@ -18,6 +18,7 @@ Version 6.1
 * Gestion de Pedidos.
     * Que cargue el vendedor automáticamente
 *  Cargar los precios y que los traiga automáticamente y los permita modificar
+* Mejorar el look and feel de los remitos impresos. 
 
 Version 7
 * Control de Stock
