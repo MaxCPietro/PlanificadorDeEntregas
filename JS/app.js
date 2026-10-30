@@ -2291,12 +2291,29 @@ let geoRoutesPage = 1;
 function renderStoredRoutes(){
  const host=document.getElementById('geoStoredRoutes');
  if(!host)return;
+ const orderById=new Map(cache.pedidos.map(p=>[String(p.id),p]));
  const routes=dbGeoRoutes.filter(r=>!r.key?.startsWith('OPT-')).map(r=>({
   ...r,pedidos:(r.pedidos||[]).filter(link=>{
-   const p=cache.pedidos.find(p=>String(p.id)===String(link.pedido_id));
-   return !!p;
+   const p=orderById.get(String(link.pedido_id));
+   // Conservar historial entregado; no mostrar asociaciones antiguas de pedidos reprogramados.
+   return p&&(p.estado==='ENTREGADO'||(
+    p.estado!=='PENDIENTE'&&p.fecha_entrega===r.fecha&&
+    (p.transportista||'Sin asignar')===r.transportista));
   })
  })).filter(r=>r.pedidos.length);
+ // Los pedidos sin planificar no tienen ruta real: se muestran como agrupaciones virtuales.
+ const pendingByDriver=new Map();
+ cache.pedidos.filter(p=>p.estado==='PENDIENTE'||!p.fecha_entrega).forEach(p=>{
+  if(p.estado==='ENTREGADO')return;
+  const driver=p.transportista||'Sin asignar';
+  if(!pendingByDriver.has(driver))pendingByDriver.set(driver,[]);
+  pendingByDriver.get(driver).push(p);
+ });
+ for(const [driver,orders] of pendingByDriver){
+  routes.push({key:'SIN FECHA · '+driver,fecha:'SIN FECHA',transportista:driver,
+   pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:true,orden:i+1})),
+   resumen:'',virtual:true});
+ }
  const today=iso(new Date());
  const statusFor=date=>{
   if(!date||date==='SIN FECHA'||!/^\d{4}-\d{2}-\d{2}$/.test(date))return ['PENDIENTE','Sin planificar'];
@@ -2315,11 +2332,11 @@ function renderStoredRoutes(){
    const p=cache.pedidos.find(p=>String(p.id)===String(link.pedido_id));
    return p?{...p,__included:link.incluido!==false,__order:link.orden}:null;
   }).filter(Boolean).sort((x,y)=>(x.__order||0)-(y.__order||0));
-  const stops=groupedStops(orders.filter(p=>p.__included));
-  const [status,label]=statusFor(r.fecha);
+  const stops=groupedStops(orders.filter(p=>p.__included&&p.latitud!=null&&p.longitud!=null&&Number.isFinite(+p.latitud)&&Number.isFinite(+p.longitud)));
+  const [status,label]=r.virtual?['PENDIENTE','Sin planificar']:statusFor(r.fecha);
   const n=(sequenceByDate.get(r.fecha)||0)+1;
   sequenceByDate.set(r.fecha,n);
-  const base=routeDisplayName(r.key);
+  const base=r.virtual?'Sin planificar':routeDisplayName(r.key);
   const routeName=countByDate.get(r.fecha)>1?base+'-'+n:base;
   const summary=r.resumen||'';
   const kmMatch=summary.match(/(\d+(?:[.,]\d+)?)\s*km\b/i);
@@ -2336,7 +2353,7 @@ function renderStoredRoutes(){
    return '<button type="button" class="geo-order-tooltip" data-order-id="'+esc(String(p.id))+'" title="'+esc(tooltip).replaceAll('"','&quot;')+'">#'+esc(p.numero)+'</button>'+(p.__included?'':' (excluido)');
   }).join(', ');
   const cells=[
-   '<button type="button" class="geo-route-link" data-stored-route="'+index+'" title="Ver detalle de '+esc(routeName)+'">'+esc(routeName)+'</button>',
+   r.virtual?'<strong>'+esc(routeName)+'</strong>':'<button type="button" class="geo-route-link" data-stored-route="'+index+'" title="Ver detalle de '+esc(routeName)+'">'+esc(routeName)+'</button>',
    esc(geoDisplayDate(r.fecha)),esc(r.transportista||'—'),String(stops.length),
    numbers,String(totalBultos),'<span class="status-badge status-'+status.replaceAll(' ','-')+'">'+esc(label)+'</span>',formatNumber(km),formatNumber(liters),
    cost==null?'':'$ '+cost.toLocaleString('es-AR',{maximumFractionDigits:0}),
