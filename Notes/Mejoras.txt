@@ -14,6 +14,11 @@ OK 2) Sacar los fitros de arriba y ponerlos donde correspondan en cada subsecci√
 OK 3) Paginacion
 
 Version 6.1
+* Agrupar los pedidos por viajes
+* Que las rutas aparezcan abajo y se pueda no volver al deposito.
+* que se puedan ordenar las paradas de las rutas.
+
+Version 6.1
 * Base de datos de clientes
 * Gestion de Pedidos.
     * Que cargue el vendedor autom√°ticamente
