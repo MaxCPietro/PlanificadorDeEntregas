@@ -139,7 +139,8 @@
                 <!-- Filtro por estado del pedido -->
                 <select id="filterStatus">
                     <option value="">Todos los estados</option>
-                    <option>PENDIENTE</option>
+                    <option>PENDIENTE - SIN LIBERAR</option>
+                        <option>PENDIENTE - LIBERADO</option>
                     <option>PROGRAMADO</option>
                     <option>EN REPARTO</option>
                     <option>ENTREGADO</option>
@@ -242,7 +243,8 @@
                     <select id="ordersDriver" aria-label="Filtrar pedidos por transportista"><option value="">Todos los transportistas</option></select>
                     <div id="ordersStatuses" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px">
                         <span>Estados:</span>
-                        <label><input type="checkbox" value="PENDIENTE" checked> Sin planificar</label>
+                        <label><input type="checkbox" value="PENDIENTE - SIN LIBERAR" checked> Pendiente - Sin Liberar</label>
+                        <label><input type="checkbox" value="PENDIENTE - LIBERADO" checked> Pendiente - Liberado</label>
                         <label><input type="checkbox" value="PROGRAMADO" checked> Planificado</label>
                         <label><input type="checkbox" value="EN REPARTO" checked> En reparto</label>
                         <label><input type="checkbox" value="ENTREGADO"> Entregado</label>
@@ -373,7 +375,8 @@
                 <label>
                     Estado
                     <select id="oStatus">
-                        <option>PENDIENTE</option>
+                        <option>PENDIENTE - SIN LIBERAR</option>
+                        <option>PENDIENTE - LIBERADO</option>
                         <option>PROGRAMADO</option>
                         <option>EN REPARTO</option>
                         <option>ENTREGADO</option>
