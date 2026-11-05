@@ -308,8 +308,13 @@ button.danger {
 }
 
 /* Pedido pendiente */
-.order.PENDIENTE {
+ .order.PENDIENTE, .order.PENDIENTE---LIBERADO {
     border-left-color: #9aa6b2;
+}
+.order.PENDIENTE---SIN-LIBERAR {
+    border-left-color: #c62828;
+    background: #fff2f2;
+    cursor: not-allowed;
 }
 
 /* Pedido en reparto.
@@ -333,7 +338,8 @@ button.danger {
     line-height: 1.4;
     white-space: nowrap;
 }
-.status-PENDIENTE { background: #e5e7eb; color: #374151; }
+.status-PENDIENTE, .status-PENDIENTE---LIBERADO { background: #e5e7eb; color: #374151; }
+.status-PENDIENTE---SIN-LIBERAR { background: #c62828; color: #ffffff; }
 .status-PROGRAMADO { background: #1769d2; color: #ffffff; }
 .status-EN-REPARTO { background: #f5c542; color: #332500; }
 .status-ENTREGADO { background: #1f9d60; color: #ffffff; }
@@ -1366,3 +1372,7 @@ header.app-header #logout:not(.hidden){color:white;background:transparent;border
 
 /* Filtros seleccionables de estados en la lista de pedidos. */
 #ordersStatuses input[type="checkbox"] { accent-color: #506F8D; }
+
+/* Liberación de pedidos: distinción visual en calendario y filtros. */
+#calendarView .order.PENDIENTE---LIBERADO { border-left-color: #9aa6b2; }
+#calendarView .order.PENDIENTE---SIN-LIBERAR { border-left-color: #c62828; background: #fff2f2; }
