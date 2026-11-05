@@ -1560,7 +1560,7 @@ function todayStatus(date, status) {
 }
 
 function statusBadge(status) {
-    const safe = STATUS.includes(status) ? status : (status === 'PENDIENTE' ? 'PENDIENTE - LIBERADO' : 'PENDIENTE - LIBERADO');
+    const safe = STATUS.includes(status) ? status : 'PENDIENTE - LIBERADO';
     return `<span class="status-badge status-${safe.replaceAll(' ', '-')}">${esc(safe)}</span>`;
 }
 
@@ -1584,6 +1584,7 @@ function newOrder() {
     $('#oNumber').value = nextOrderNumber();
     $('#oDate').value = iso(new Date());
     $('#oStatus').value = 'PENDIENTE - LIBERADO';
+    syncReleaseUI();
     $('#oPayment').value = 'Contado';
     $('#oProvince').value = 'Buenos Aires';
 
@@ -1618,7 +1619,8 @@ async function editOrder(id) {
     $('#oDate').value = p.fecha_pedido || '';
     $('#oDelivery').value = p.fecha_entrega || '';
     $('#oDriver').value = p.transportista || '';
-    $('#oStatus').value = p.estado;
+    $('#oStatus').value = p.estado === 'PENDIENTE' ? 'PENDIENTE - LIBERADO' : p.estado;
+    syncReleaseUI();
     $('#oPayment').value = p.tipo_pago || 'Contado';
 
     $('#printOrderMeta').textContent =
@@ -1687,6 +1689,15 @@ function updatePrintDetails() {
     `;
 }
 
+
+function syncReleaseUI() {
+    const blocked = $('#oStatus').value === 'PENDIENTE - SIN LIBERAR';
+    if (blocked) $('#oDelivery').value = '';
+    $('#oDelivery').disabled = blocked;
+    $('#oDelivery').title = blocked ? 'Liberá el pedido para asignar una fecha de entrega' : '';
+}
+
+$('#oStatus').onchange = syncReleaseUI;
 
 $('#oDelivery').onchange = () => {
     $('#oStatus').value = todayStatus($('#oDelivery').value, $('#oStatus').value);
