@@ -38,7 +38,8 @@ function $$(sel) {
 const cfg = window.APP_CONFIG || {};
 
 const STATUS = [
-    'PENDIENTE',
+    'PENDIENTE - SIN LIBERAR',
+    'PENDIENTE - LIBERADO',
     'PROGRAMADO',
     'EN REPARTO',
     'ENTREGADO'
@@ -580,7 +581,8 @@ function orderCard(p) {
 
     const e = document.createElement('article');
     e.className = 'order ' + p.estado.replaceAll(' ', '-');
-    e.draggable = true;
+    e.draggable = p.estado !== 'PENDIENTE - SIN LIBERAR';
+    if (!e.draggable) e.title = 'Pedido sin liberar: liberalo antes de planificarlo';
     e.dataset.orderId=String(p.id);
     e.setAttribute('aria-label', `Pedido ${p.numero}, arrastrar para cambiar fecha`);
 
@@ -590,7 +592,7 @@ function orderCard(p) {
         <div>${esc(c.nombre || 'Cliente')}</div>
         <small>
             ${esc(p.localidad_entrega || c.localidad || 'Sin localidad')}
-            · ${bultos(p)} ${bultos(p) === 1 ? 'bulto' : 'bultos'}${p.estado === 'PENDIENTE' ? ' · Pedido: ' + calendarShortDate(p.fecha_pedido) : ''}
+            · ${bultos(p)} ${bultos(p) === 1 ? 'bulto' : 'bultos'}${isPendingStatus(p.estado) ? ' · Pedido: ' + calendarShortDate(p.fecha_pedido) : ''}
         </small>
         <small>
             Vendedor: ${esc(nameOf('vendedores', p.vendedor_id))}
@@ -598,6 +600,7 @@ function orderCard(p) {
     `;
 
     e.ondragstart = ev => {
+        if (p.estado === 'PENDIENTE - SIN LIBERAR') { ev.preventDefault(); return; }
         ev.dataTransfer.effectAllowed = 'move';
         ev.dataTransfer.setData('text/plain', p.id);
         requestAnimationFrame(() => e.classList.add('dragging'));
@@ -636,6 +639,10 @@ function dropZone(el, date) {
         const p = cache.pedidos.find(x => x.id === id);
 
         if (!p) return;
+        if (date && p.estado === 'PENDIENTE - SIN LIBERAR') {
+            toast('Liberá el pedido antes de programar su entrega');
+            return;
+        }
         if ((p.fecha_entrega || null) === date) {
             const target=e.target.closest('.order');
             const card=[...el.querySelectorAll(':scope > .order')].find(n=>n.dataset.orderId===String(id));
@@ -655,7 +662,7 @@ function dropZone(el, date) {
                     date,
                     date === iso(new Date())
                         ? 'EN REPARTO'
-                        : (date ? 'PROGRAMADO' : 'PENDIENTE')
+                        : (date ? 'PROGRAMADO' : 'PENDIENTE - LIBERADO')
                 )
             })
             .eq('id', id);
@@ -1539,8 +1546,13 @@ function nextOrderNumber() {
 }
 
 
+function isPendingStatus(status) {
+    return status === 'PENDIENTE' || status === 'PENDIENTE - LIBERADO' || status === 'PENDIENTE - SIN LIBERAR';
+}
+
 function todayStatus(date, status) {
-    if (!date) return 'PENDIENTE';
+    if (status === 'PENDIENTE - SIN LIBERAR') return 'PENDIENTE - SIN LIBERAR';
+    if (!date) return 'PENDIENTE - LIBERADO';
     const today = iso(new Date());
     if (date < today) return 'ENTREGADO';
     if (date === today) return 'EN REPARTO';
@@ -1548,7 +1560,7 @@ function todayStatus(date, status) {
 }
 
 function statusBadge(status) {
-    const safe = STATUS.includes(status) ? status : 'PENDIENTE';
+    const safe = STATUS.includes(status) ? status : (status === 'PENDIENTE' ? 'PENDIENTE - LIBERADO' : 'PENDIENTE - LIBERADO');
     return `<span class="status-badge status-${safe.replaceAll(' ', '-')}">${esc(safe)}</span>`;
 }
 
@@ -1571,7 +1583,7 @@ function newOrder() {
 
     $('#oNumber').value = nextOrderNumber();
     $('#oDate').value = iso(new Date());
-    $('#oStatus').value = 'PENDIENTE';
+    $('#oStatus').value = 'PENDIENTE - LIBERADO';
     $('#oPayment').value = 'Contado';
     $('#oProvince').value = 'Buenos Aires';
 
@@ -1950,7 +1962,8 @@ $('#orderForm').onsubmit = async e => {
         return;
     }
 
-    const chosenDate = $('#oDelivery').value || null;
+    const selectedStatus = $('#oStatus').value;
+    const chosenDate = selectedStatus === 'PENDIENTE - SIN LIBERAR' ? null : ($('#oDelivery').value || null);
 
     const data = {
         numero: editOrderId
@@ -1963,7 +1976,7 @@ $('#orderForm').onsubmit = async e => {
         fecha_pedido: $('#oDate').value || iso(new Date()),
         fecha_entrega: chosenDate,
 
-        estado: todayStatus(chosenDate, $('#oStatus').value),
+        estado: todayStatus(chosenDate, selectedStatus),
 
         transportista: $('#oDriver').value || null,
         tipo_pago: $('#oPayment').value || 'Contado',
@@ -2297,20 +2310,22 @@ function renderStoredRoutes(){
    const p=orderById.get(String(link.pedido_id));
    // Conservar historial entregado; no mostrar asociaciones antiguas de pedidos reprogramados.
    return p&&(p.estado==='ENTREGADO'||(
-    p.estado!=='PENDIENTE'&&p.fecha_entrega===r.fecha&&
+    !isPendingStatus(p.estado)&&p.fecha_entrega===r.fecha&&
     (p.transportista||'Sin asignar')===r.transportista));
   })
  })).filter(r=>r.pedidos.length);
  // Los pedidos sin planificar no tienen ruta real: se muestran como agrupaciones virtuales.
  const pendingByDriver=new Map();
- cache.pedidos.filter(p=>p.estado==='PENDIENTE'||!p.fecha_entrega).forEach(p=>{
+ cache.pedidos.filter(p=>isPendingStatus(p.estado)||!p.fecha_entrega).forEach(p=>{
   if(p.estado==='ENTREGADO')return;
   const driver=p.transportista||'Sin asignar';
-  if(!pendingByDriver.has(driver))pendingByDriver.set(driver,[]);
-  pendingByDriver.get(driver).push(p);
+  const group=(p.estado==='PENDIENTE - SIN LIBERAR'?'PENDIENTE - SIN LIBERAR':'PENDIENTE - LIBERADO')+'|'+driver;
+  if(!pendingByDriver.has(group))pendingByDriver.set(group,[]);
+  pendingByDriver.get(group).push(p);
  });
- for(const [driver,orders] of pendingByDriver){
-  routes.push({key:'SIN FECHA · '+driver,fecha:'SIN FECHA',transportista:driver,
+ for(const [group,orders] of pendingByDriver){
+  const [pendingStatus,driver]=group.split('|');
+  routes.push({key:'SIN FECHA · '+driver+' · '+pendingStatus,fecha:'SIN FECHA',transportista:driver,pendingStatus,
    pedidos:orders.map((p,i)=>({pedido_id:p.id,incluido:true,orden:i+1})),
    resumen:'',virtual:true});
  }
@@ -2322,7 +2337,7 @@ function renderStoredRoutes(){
   return ['PROGRAMADO','Planificado'];
  };
  const sort=window.geoRouteSort||{column:'fecha',asc:false};
- const selectedStatuses=window.geoRouteStatusFilters||new Set(['PENDIENTE','PROGRAMADO','EN REPARTO']);
+ const selectedStatuses=window.geoRouteStatusFilters||new Set(['PENDIENTE - LIBERADO','PENDIENTE - SIN LIBERAR','PROGRAMADO','EN REPARTO']);
  const countByDate=new Map();
  routes.forEach(r=>countByDate.set(r.fecha,(countByDate.get(r.fecha)||0)+1));
  const sequenceByDate=new Map();
@@ -2333,7 +2348,7 @@ function renderStoredRoutes(){
    return p?{...p,__included:link.incluido!==false,__order:link.orden}:null;
   }).filter(Boolean).sort((x,y)=>(x.__order||0)-(y.__order||0));
   const stops=groupedStops(orders.filter(p=>p.__included&&p.latitud!=null&&p.longitud!=null&&Number.isFinite(+p.latitud)&&Number.isFinite(+p.longitud)));
-  const [status,label]=r.virtual?['PENDIENTE','Sin planificar']:statusFor(r.fecha);
+  const [status,label]=r.virtual?[r.pendingStatus,r.pendingStatus==='PENDIENTE - SIN LIBERAR'?'Sin liberar':'Sin planificar']:statusFor(r.fecha);
   const n=(sequenceByDate.get(r.fecha)||0)+1;
   sequenceByDate.set(r.fecha,n);
   const base=r.virtual?'Sin planificar':routeDisplayName(r.key);
@@ -2373,7 +2388,7 @@ function renderStoredRoutes(){
  const pageRecords=filteredRecords.slice((geoRoutesPage-1)*GEO_ROUTES_PAGE_SIZE,geoRoutesPage*GEO_ROUTES_PAGE_SIZE);
  const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['paradas','Paradas'],['pedidos','# Pedidos'],['bultos','Σ Bultos'],['estado','Estado'],['km','Σ Km Aprox'],['litros','Σ Litros Aprox'],['costo','$ Aprox'],['resumen','Resumen']];
  const headers=columns.map(([id,label])=>'<th><button type="button" class="geo-sort" data-geo-sort="'+id+'" aria-label="Ordenar por '+label+'">'+label+' '+(sort.column===id?(sort.asc?'▲':'▼'):'↕')+'</button></th>').join('');
- const statusOptions=[['PENDIENTE','Sin planificar'],['PROGRAMADO','Planificado'],['EN REPARTO','En reparto'],['ENTREGADO','Entregado']];
+ const statusOptions=[['PENDIENTE - LIBERADO','Pendiente - Liberado'],['PENDIENTE - SIN LIBERAR','Pendiente - Sin Liberar'],['PROGRAMADO','Planificado'],['EN REPARTO','En reparto'],['ENTREGADO','Entregado']];
  const filterHtml='<div class="geo-route-filter"><span>Estados:</span>'+statusOptions.map(([id,label])=>'<label class="geo-state-choice"><input type="checkbox" data-geo-status="'+id+'" '+(selectedStatuses.has(id)?'checked':'')+'> '+label+'</label>').join('')+'</div>';
  host.innerHTML='<div class="geo-route-table-heading"><h3>Listado de rutas</h3>'+filterHtml+'</div>'+(filteredRecords.length?'<div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+pageRecords.map(r=>r.html).join('')+'</tbody></table></div>':'<p class="muted">No hay rutas para los estados seleccionados.</p>') +
  (filteredRecords.length ? '<div class="actions" style="display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin-top:12px">' +
