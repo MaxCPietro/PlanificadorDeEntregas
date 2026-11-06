@@ -20,7 +20,14 @@
     >
 
     <!-- [05] Estilos propios de la aplicación -->
-    <link rel="stylesheet" href="./Styles/styles.css">
+    <!-- Caché de recursos locales: URL nueva en cada carga de la aplicación. -->
+    <script>
+        window.WAIPARA_ASSET_VERSION = Date.now().toString(36);
+        const waiparaStyles = document.createElement('link');
+        waiparaStyles.rel = 'stylesheet';
+        waiparaStyles.href = './Styles/styles.css?v=' + window.WAIPARA_ASSET_VERSION;
+        document.head.appendChild(waiparaStyles);
+    </script>
 
     <!-- [06] Biblioteca cliente de Supabase para JavaScript -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -29,7 +36,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <!-- [08] Configuración de la conexión con Supabase -->
-    <script src="./JS/config.js"></script>
+    <!-- config.js y app.js se cargarán en orden al final del documento. -->
 </head>
 
 <body>
@@ -561,9 +568,27 @@
     <!-- [24] CONTENEDOR PARA NOTIFICACIONES TEMPORALES -->
     <div id="toast" class="toast"></div>
 
-    <!-- [25] LÓGICA PRINCIPAL DE LA APLICACIÓN -->
-    <!-- defer permite procesar el script después de analizar el HTML -->
-    <script src="./JS/app.js" defer></script>
+    <!-- [25] CARGA DE RECURSOS CON INVALIDACIÓN AUTOMÁTICA DE CACHÉ -->
+    <!-- El mismo identificador se aplica a ambos scripts y cambia en cada recarga. -->
+    <script>
+        (async () => {
+            const version = window.WAIPARA_ASSET_VERSION || Date.now().toString(36);
+            const loadScript = src => new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = src + '?v=' + version;
+                script.onload = resolve;
+                script.onerror = () => reject(new Error('No se pudo cargar ' + src));
+                document.body.appendChild(script);
+            });
+            try {
+                await loadScript('./JS/config.js');
+                await loadScript('./JS/app.js');
+            } catch (error) {
+                console.error('Error de carga de la aplicación:', error);
+                alert('No se pudo cargar el Planificador de Entregas. Revisá tu conexión e intentá actualizar la página.');
+            }
+        })();
+    </script>
 
 </body>
 </html>
