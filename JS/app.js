@@ -2644,7 +2644,8 @@ function routeDisplayName(key) {
     if (date === 'SIN FECHA') return ['Sin fecha de entrega', raw.match(/Jornada [0-9]+/)?.[0], raw.match(/Viaje [0-9]+/)?.[0]].filter(Boolean).join(' · ');
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
     const suffix = key.startsWith('OPT-') ? [raw.match(/Jornada [0-9]+/)?.[0], raw.match(/Viaje [0-9]+/)?.[0]].filter(Boolean).join(' · ') : '';
-    return m ? 'R-' + m[3] + m[2] + m[1].slice(2) + (suffix ? ' · ' + suffix : '') : raw;
+    return m ? (key.startsWith('OPT-') ? 'Sugerido ' : 'R-') +
+        m[3] + m[2] + m[1].slice(2) + (suffix ? ' · ' + suffix : '') : raw;
 }
 
 async function calculateSingleRoute(key, button) {
@@ -3180,7 +3181,7 @@ async function packTrips(orders) {
 /** FIFO por fecha de pedido, desempate por cercanía y carga. */
 function compareTripPriority(a,b) {
     const date = trip => trip.orders.reduce((old,p)=>{
-        const raw = /^\\d{4}-\\d{2}-\\d{2}$/.test(p.fecha_pedido||'')
+        const raw = /^\d{4}-\d{2}-\d{2}$/.test(p.fecha_pedido||'')
             ? p.fecha_pedido : '9999-12-31';
         return raw < old ? raw : old;
     },'9999-12-31');
@@ -3189,13 +3190,17 @@ function compareTripPriority(a,b) {
 }
 
 /**
- * Ordena viajes en jornadas: FIFO estricto entre viajes; dentro de la
- * misma antigüedad prefiere viajes más próximos y de mayor carga.
+ * Agrupa viajes próximos y prioriza FIFO para ordenar las jornadas;
+ * en fechas fijas FIFO también define cuáles pedidos tienen prioridad.
  * Cada viaje comienza y termina en el depósito.
  */
 function packWorkdays(trips, fixedDate = false) {
     const days=[], rejected=[];
-    const ordered=[...trips].sort(compareTripPriority);
+    // Con fecha fija, FIFO determina qué pedidos caben en esa fecha.
+    // Sin fecha, primero combinamos recorridos cortos en días compactos;
+    // luego las jornadas se ORDENAN por antigüedad para priorizar FIFO.
+    const ordered=[...trips].sort(fixedDate ? compareTripPriority :
+        (a,b)=>a.km-b.km || compareTripPriority(a,b));
     for (const trip of ordered) {
         if (!Number.isFinite(trip.km) || !Number.isFinite(trip.minutes) ||
             trip.bultos > OPT_LIMITS.maxBultos || trip.km > OPT_LIMITS.maxKm ||
@@ -3203,7 +3208,6 @@ function packWorkdays(trips, fixedDate = false) {
             rejected.push(...trip.orders);
             continue;
         }
-        // Primer día factible para no postergar un pedido antiguo.
         let day = days.find(d => d.km+trip.km <= OPT_LIMITS.maxKm+1e-8 &&
             d.minutes+trip.minutes <= OPT_LIMITS.maxMinutes+1e-8);
         if (!day) {
@@ -3218,6 +3222,9 @@ function packWorkdays(trips, fixedDate = false) {
         day.km+=trip.km;
         day.minutes+=trip.minutes;
     }
+    days.forEach(day=>day.trips.sort(compareTripPriority));
+    // La jornada más antigua se sugiere primero, incluso si se armó al final.
+    days.sort((a,b)=>compareTripPriority(a.trips[0],b.trips[0]));
     return {days,rejected};
 }
 
@@ -3226,9 +3233,13 @@ function packWorkdays(trips, fixedDate = false) {
  */
 async function suggestWorkday(start, occupied) {
     const date = new Date(start.getFullYear(),start.getMonth(),start.getDate(),12);
+    const checkedYears=new Set();
     for(let tries=0; tries<370; tries++) {
         const y=date.getFullYear();
-        await loadHolidays(y);
+        if(!checkedYears.has(y)) {
+            checkedYears.add(y);
+            await loadHolidays(y);
+        }
         const day=iso(date);
         const dow=date.getDay();
         if(dow!==0 && dow!==6 && !holidaysByYear.get(y)?.has(day) &&
