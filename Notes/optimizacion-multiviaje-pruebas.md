@@ -32,3 +32,12 @@
 - Caso adicional: cuatro viajes que superan presupuesto diario deben producir dos jornadas sugeridas si no tienen fecha, o rechazar el exceso si pertenecen a una fecha asignada.
 - Validación defensiva: no admitir 0 km o 0 min para clientes geográficamente distintos del depósito.
 - Se realizaron pruebas unitarias con valores sintéticos y verificación sintáctica; faltan pruebas de integración en navegador con OSRM y registros reales.
+
+## Mejora del 8/11/2026: fechas sugeridas, FIFO y visualización por jornada
+- Se muestra una sola tarjeta por jornada con los viajes internos, sus cargas, recorridos y retornos al depósito.
+- La planificación de pedidos sin fecha propone fechas futuras a partir del día siguiente, omitiendo fines de semana, feriados nacionales disponibles en el calendario y fechas ya ocupadas por el mismo transportista.
+- Las fechas aparecen como **Sugerido dd-mm-aa**. Son sólo sugerencias, no modifican \`fecha_entrega\` ni ningún registro SQL.
+- La prioridad FIFO utiliza \`fecha_pedido\` ascendente. Para pedidos sin fecha, la consolidación primero junta viajes cortos y después ordena las jornadas por la antigüedad más alta contenida en ellas; con fecha fija, los pedidos más antiguos tienen prioridad para entrar.
+- Validación de regresión sintética: #52 (51,6 km; 55 min; 300 bultos), #51 (13,4 km; 14 min; 300 bultos), #47 (43,7 km; 39 min; 300 bultos) -> **1 jornada; 3 viajes; 108,7 km; 108 minutos**.
+- Caso agregado: un viaje más antiguo de 111,4 km y 160 bultos se asigna a una jornada anterior y #52/#51/#47 se consolidan en la siguiente jornada.
+- Las pruebas son lógicas con datos de ejemplo. Antes de fusionar se requiere prueba integral con pedidos reales y OSRM.
