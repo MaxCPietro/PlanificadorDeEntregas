@@ -2604,6 +2604,22 @@ function groupedStops(orders) {
  });
  return stops;
 }
+// Un viaje físico nunca puede cargar más de 310 bultos.
+// Para rutas manuales o guardadas sin subviajes, segmentar antes de pedir OSRM.
+function splitOrdersByVehicleCapacity(orders) {
+    const trips=[]; let current=[],units=0;
+    for(const p of orders) {
+        const load=bultos(p);
+        if(!Number.isFinite(load)||load<0||load>310)
+            throw Error('Pedido #'+p.numero+': carga incompatible con 310 bultos por viaje');
+        if(current.length && units+load>310) {
+            trips.push(current); current=[]; units=0;
+        }
+        current.push(p);units+=load;
+    }
+    if(current.length)trips.push(current);
+    return trips;
+}
 let routeDetailMap = null;
 let routeDetailRequest = 0;
 async function openRouteDetails(key, storedOrders = null, displayName = null) {
@@ -2612,7 +2628,7 @@ async function openRouteDetails(key, storedOrders = null, displayName = null) {
     const dayTrips = optimizedDayTrips.get(key);
     const segmentOrders = dayTrips
         ? dayTrips.map(t=>t.orders.filter(p=>!excludedGeoOrders.has(String(p.id)))).filter(t=>t.length)
-        : [orders];
+        : splitOrdersByVehicleCapacity(orders);
     const stops = segmentOrders.flatMap(t=>groupedStops(t));
     if (!orders.length) { toast('No hay pedidos incluidos en esta ruta'); return; }
     let dialog = document.getElementById('geoRouteDialog');
@@ -2697,7 +2713,12 @@ async function openRouteDetails(key, storedOrders = null, displayName = null) {
                 .bindPopup(esc(label)+'<br>Combustible acumulado: '+fuel.toFixed(2)+' L');
         });
         const totalOp = dayTrips ? dayTrips.reduce((sum,trip)=>sum+trip.operationalMinutes,0)
-            : tripOperatingTimes(orders,route.distance/1000,route.duration/60).operationalMinutes;
+            : segmentOrders.reduce((sum,trip,index)=>{
+                const start=segmentOrders.slice(0,index).reduce((n,t)=>n+groupedStops(t).length+1,0);
+                const count=groupedStops(trip).length+1;
+                const drive=legs.slice(start,start+count).reduce((n,leg)=>n+leg.duration,0)/60;
+                return sum+operationBreakdown(drive,count-1).total;
+            },0);
         dialog.querySelector('#geoRouteSummary').textContent =
             segmentOrders.length+' viajes · '+stops.length+' paradas ('+orders.length+
             ' pedidos) · '+(route.distance/1000).toFixed(1)+' km acumulados · '+
