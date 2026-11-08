@@ -2800,8 +2800,8 @@ async function calculateSingleRoute(key, button) {
 
 function formatGeoRouteMeta(summary) {
     if(!summary)return '';
-    const km=summary.match(/(\\d+(?:[.,]\\d+)?)\\s*km\\b/i);
-    const minutes=summary.match(/(\\d+(?:[.,]\\d+)?)\\s*min\\b/i);
+    const km=summary.match(/(\d+(?:[.,]\d+)?)\s*km\b/i);
+    const minutes=summary.match(/(\d+(?:[.,]\d+)?)\s*min\b/i);
     const parts=[];
     if(km)parts.push(km[1]+' km');
     if(minutes){
@@ -2932,7 +2932,8 @@ function drawMap() {
                 key,
                 color,
                 orders,
-                formatGeoRouteMeta(routeSummaries.get(key) || '')
+                formatGeoRouteMeta(routeSummaries.get(key) ||
+                    dbGeoRoutes.find(r=>r.key===key)?.resumen || '')
             )
         );
     });
