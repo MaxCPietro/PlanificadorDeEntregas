@@ -2261,21 +2261,25 @@ async function loadDbGeoRoutes(){
  });
  renderStoredRoutes();
 }
-async function saveRealRoute(key,orders,route){
- if(key.startsWith('OPT-'))return; // Optimización: simulación sin persistencia.
+async function saveRealTrips(key, orders, trips) {
+ if(key.startsWith('OPT-'))return;
  const date=orders[0]?.fecha_entrega;
  const driver=orders[0]?.transportista||'Sin asignar';
- if(!date)throw Error('No se guardan rutas sin fecha');
- const all=cache.pedidos.filter(p=>p.fecha_entrega===date&&(p.transportista||'Sin asignar')===driver);
- if(all.some(p=>p.estado==='ENTREGADO'))throw Error('Ruta histórica con pedidos entregados: no se modifica');
- const {error}=await sb.rpc('waipara_guardar_ruta_real',{
-  p_fecha:date,p_transportista:driver,p_viaje:1,
-  p_pedidos:all.map((p,i)=>({pedido_id:p.id,orden:i+1,incluido:!excludedGeoOrders.has(String(p.id))})),
-  p_distancia_km:route.distance/1000,p_duracion_min:route.duration/60,
-  p_retorno_km:0,p_retorno_min:0,
+ const cutoff=new Date().toISOString().slice(0,10);
+ if(!date||date<cutoff||date<'2026-11-09')
+  throw Error('Solo se recalculan rutas futuras desde el 09/11/2026');
+ if(orders.some(p=>p.estado==='ENTREGADO'||p.estado==='PENDIENTE - SIN LIBERAR'))
+  throw Error('La ruta incluye pedidos no habilitados');
+ const payload=trips.map(({orders:ps,route})=>({
+  pedidos:ps.map((p,i)=>({pedido_id:p.id,orden:i+1})),
+  distancia_km:route.distance/1000,
+  duracion_min:route.duration/60,
+  geometria:route.geometry
+ }));
+ const {error}=await sb.rpc('waipara_guardar_viajes_futuros',{
+  p_fecha:date,p_transportista:driver,p_viajes:payload,
   p_consumo_l_100km:Number(geoSettings.consumption)||12,
-  p_precio_litro:Number(geoSettings.fuelPrice)>0?Number(geoSettings.fuelPrice):null,
-  p_instrucciones:[],p_geometria:route.geometry
+  p_precio_litro:Number(geoSettings.fuelPrice)>0?Number(geoSettings.fuelPrice):null
  });
  if(error)throw Error('Supabase: '+error.message);
  await loadDbGeoRoutes();
@@ -2993,68 +2997,41 @@ function drawMap() {
    ============================================================ */
 
 async function requestRoadRoute(key, orders, color) {
-    orders=orders.filter(p=>!excludedGeoOrders.has(String(p.id)));
-    if (!orders.length) return;
-    if (optimizedDayTrips.has(key)) {
-        const trips = optimizedDayTrips.get(key);
-        let km=0, minutes=0;
-        for(let i=0;i<trips.length;i++){
-            const trip=trips[i], syntheticKey=key+' · tramo '+(i+1);
-            await requestRoadRoute(syntheticKey,trip.orders,color);
-            routeLayers.forEach(layer=>{
-                if(layer.routeKey===syntheticKey)layer.routeKey=key;
-            });
-            const summary=routeSummaries.get(syntheticKey);
-            routeSummaries.delete(syntheticKey);
-            km+=trip.km;minutes+=trip.minutes;
-        }
-        const operating=trips.reduce((sum,t)=>sum+t.operationalMinutes,0);
-        routeSummaries.set(key,trips.length+' viajes · '+km.toFixed(1)+
-            ' km acumulados · '+Math.round(operating)+' min OPERATIVOS ('+
-            Math.round(minutes)+' min OSRM) · '+geoFuelSummary(km));
-        return;
-    }
-
-    const coords = [
-        `${DEPOT.lng},${DEPOT.lat}`,
-        ...groupedStops(orders).map(p => `${p.lng},${p.lat}`),
-        `${DEPOT.lng},${DEPOT.lat}`
-    ].join(';');
-
-    const j = await fetch(
-        'https://router.project-osrm.org/route/v1/driving/' +
-        coords +
-        '?overview=full&geometries=geojson'
-    ).then(r => r.json());
-
-    if (j.code !== 'Ok' || !j.routes?.[0]) {
-        throw Error('Ruta no disponible para ' + key);
-    }
-
-    const layer = L.geoJSON(j.routes[0].geometry, {
-        style: {
-            color,
-            weight: 5,
-            opacity: 0.88
-        }
-    });
-
-    const on = routeVisibility.get(key) !== false;
-
-    if (on) layer.addTo(map);
-
-    routeLayers.push({
-        routeKey: key,
-        layer
-    });
-
-    routeSummaries.set(
-        key,
-        `${(j.routes[0].distance / 1000).toFixed(1)} km ida y vuelta · ` +
-        `${Math.round(j.routes[0].duration / 60)} min · ` +
-        geoFuelSummary(j.routes[0].distance / 1000)
-    );
-    if(!key.startsWith('OPT-'))await saveRealRoute(key,orders,j.routes[0]);
+ orders=orders.filter(p=>!excludedGeoOrders.has(String(p.id)));
+ if(!orders.length)return;
+ const simulated=key.startsWith('OPT-')||key.includes(' · tramo ');
+ const dayTrips=optimizedDayTrips.get(key);
+ const trips=dayTrips
+  ?dayTrips.map(t=>t.orders.filter(p=>!excludedGeoOrders.has(String(p.id)))).filter(t=>t.length)
+  :splitOrdersByVehicleCapacity(orders);
+ const measured=[];
+ for(const tripOrders of trips){
+  const coords=[
+   `${DEPOT.lng},${DEPOT.lat}`,
+   ...groupedStops(tripOrders).map(p=>`${p.lng},${p.lat}`),
+   `${DEPOT.lng},${DEPOT.lat}`
+  ].join(';');
+  const response=await fetch('https://router.project-osrm.org/route/v1/driving/'+coords+'?overview=full&geometries=geojson');
+  if(!response.ok)throw Error('OSRM no responde');
+  const j=await response.json();
+  if(j.code!=='Ok'||!j.routes?.[0])throw Error('Ruta no disponible para '+key);
+  measured.push({orders:tripOrders,route:j.routes[0]});
+ }
+ // Persistir en una sola transacción únicamente cuando todos los viajes tienen métricas.
+ if(!simulated)await saveRealTrips(key,orders,measured);
+ routeLayers.filter(x=>x.routeKey===key).forEach(x=>map.removeLayer(x.layer));
+ routeLayers=routeLayers.filter(x=>x.routeKey!==key);
+ let km=0,drive=0,operating=0;
+ for(const {orders:ps,route} of measured){
+  const layer=L.geoJSON(route.geometry,{style:{color,weight:5,opacity:0.88}});
+  if(routeVisibility.get(key)!==false)layer.addTo(map);
+  routeLayers.push({routeKey:key,layer});
+  km+=route.distance/1000;
+  drive+=route.duration/60;
+  operating+=operationBreakdown(route.duration/60,groupedStops(ps).length).total;
+ }
+ routeSummaries.set(key,km.toFixed(1)+' km · '+Math.round(drive)+' min OSRM · '+
+  Math.round(operating)+' min operativos · '+measured.length+' viajes');
 }
 
 
