@@ -2734,7 +2734,7 @@ async function openRouteDetails(key, storedOrders = null, displayName = null) {
             const label = isReturn
                 ? 'Viaje '+tripNumber+++' · Regreso al depósito'
                 : 'Viaje '+tripNumber+' · Parada '+stopNumber+' · '+
-                    (points[i+1].orders||[]).map(p=>'#'+p.numero+' '+nameOf('clientes',p.cliente_id)).join(' / ');
+                    (points[i+1].orders||[]).map(p=>'#'+p.numero+' '+nameOf('clientes',p.cliente_id)).join(' / ')+' · '+(points[i+1].orders||[]).reduce((sum,p)=>sum+bultos(p),0)+' bultos';
             return '<div style="padding:8px 0;border-bottom:1px solid #e5e7eb"><b>'+
                 esc(label)+'</b><div class="muted">'+km.toFixed(1)+' km · '+
                 Math.round(leg.duration/60)+' min · '+liters.toFixed(2)+
