@@ -2158,20 +2158,66 @@ function geoFuelSummary(km) {
     return liters.toFixed(1) + ' L estimados' +
         (price > 0 ? ' · $ ' + (liters * price).toLocaleString('es-AR', {maximumFractionDigits: 0}) : ' · precio/L sin configurar');
 }
+
+const DEFAULT_OPERATIONS = Object.freeze({
+    trafficFactor: 1.20, loadMinutes: 15, unloadMinutes: 20, waitMinutes: 10
+});
+function operationalSettings() {
+    const result={};
+    for(const [key,fallback] of Object.entries(DEFAULT_OPERATIONS)) {
+        const raw=geoSettings[key];
+        const value=raw===undefined || raw===null || raw==='' ? fallback:Number(raw);
+        if(!Number.isFinite(value) || (key==='trafficFactor'
+            ? value<1 || value>3 : value<0 || value>240))
+            throw Error('Configuración operativa inválida: '+key);
+        result[key]=value;
+    }
+    return result;
+}
 function geoSetup() {
  const panel=document.getElementById('geoSettingsPanel');
- if(!panel || panel.dataset.ready) return;
+ if(!panel || panel.dataset.ready)return;
  panel.dataset.ready='1';
- panel.innerHTML='<label>L/100 km <input id="geoConsumption" type="number" min="0.1" step="0.1" style="width:65px"></label> <label>Combustible $/L <input id="geoFuelPrice" type="number" min="0" step="0.01" style="width:85px" placeholder="Precio"></label>';
- panel.querySelector('#geoConsumption').value=geoSettings.consumption||12;
- panel.querySelector('#geoFuelPrice').value=geoSettings.fuelPrice||'';
- panel.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{
-  const consumption=Number(panel.querySelector('#geoConsumption').value);
-  const fuelPrice=panel.querySelector('#geoFuelPrice').value;
-  if(!(consumption>0) || (fuelPrice!=='' && Number(fuelPrice)<0)){toast('Revisá los valores');return;}
-  Object.assign(geoSettings,{consumption,fuelPrice});
-  localStorage.setItem('waiparaGeoSettings',JSON.stringify(geoSettings));
-  toast('Configuración guardada localmente');
+ panel.innerHTML='<label>L/100 km <input id="geoConsumption" type="number" min="0.1" step="0.1" style="width:65px"></label> '+
+ '<label>Combustible $/L <input id="geoFuelPrice" type="number" min="0" step="0.01" style="width:85px"></label> '+
+ '<details class="geo-operational-settings"><summary>⏱ Tiempos operativos</summary>'+
+ '<div class="geo-operational-fields">'+
+ '<label>Factor tránsito × <input id="geoTrafficFactor" type="number" min="1" max="3" step="0.05"></label>'+
+ '<label>Carga por viaje (min) <input id="geoLoadMinutes" type="number" min="0" max="240" step="1"></label>'+
+ '<label>Descarga por parada (min) <input id="geoUnloadMinutes" type="number" min="0" max="240" step="1"></label>'+
+ '<label>Espera por parada (min) <input id="geoWaitMinutes" type="number" min="0" max="240" step="1"></label></div>'+
+ '<small>Tiempo operativo = conducción OSRM × factor + carga + descarga + espera. Valores por dispositivo.</small></details>';
+ const ids={consumption:'geoConsumption',fuelPrice:'geoFuelPrice',
+     trafficFactor:'geoTrafficFactor',loadMinutes:'geoLoadMinutes',
+     unloadMinutes:'geoUnloadMinutes',waitMinutes:'geoWaitMinutes'};
+ Object.entries(ids).forEach(([key,id])=>{
+     panel.querySelector('#'+id).value=key in DEFAULT_OPERATIONS
+         ? (geoSettings[key]??DEFAULT_OPERATIONS[key])
+         : (geoSettings[key]??(key==='consumption'?12:''));
+ });
+ panel.querySelectorAll('input').forEach(el=>el.addEventListener('change',()=>{
+     const next={};
+     for(const [key,id] of Object.entries(ids)){
+         const input=panel.querySelector('#'+id);
+         const blank=input.value==='';
+         const value=key==='fuelPrice'&&blank?'':Number(input.value);
+         const invalid=(!blank&&!Number.isFinite(value))||
+             (blank&&key!=='fuelPrice')||
+             (key==='consumption'&&!(value>0))||
+             (key==='fuelPrice'&&value!==''&&value<0)||
+             (key==='trafficFactor'&&(value<1||value>3))||
+             (['loadMinutes','unloadMinutes','waitMinutes'].includes(key)&&
+                 (value<0||value>240));
+         if(invalid){toast('Configuración inválida: '+key);input.focus();return;}
+         next[key]=value;
+     }
+     Object.assign(geoSettings,next);
+     localStorage.setItem('waiparaGeoSettings',JSON.stringify(geoSettings));
+     optimizedRoutes=null;
+     optimizedDayTrips.clear();
+     routeSummaries.clear();
+     drawMap();
+     toast('Configuración guardada. Volvé a optimizar.');
  }));
 }
 
@@ -2186,6 +2232,8 @@ let routeMarkers = new Map();
 let routeVisibility = new Map();
 let routeSummaries = new Map();
 let optimizedRoutes = null;
+// Viajes desglosados por jornada sugerida (sólo memoria, nunca BDD).
+let optimizedDayTrips = new Map();
 // Las rutas reales se almacenan exclusivamente en Supabase.
 const excludedGeoOrders=new Set();
 let dbGeoRoutes=[];
@@ -2538,7 +2586,11 @@ let routeDetailRequest = 0;
 async function openRouteDetails(key, storedOrders = null, displayName = null) {
     const groups = optimizedRoutes || mapGroups();
     const orders = (storedOrders || groups.get(key) || []).filter(p=>!excludedGeoOrders.has(String(p.id)));
-    const stops = groupedStops(orders);
+    const dayTrips = optimizedDayTrips.get(key);
+    const segmentOrders = dayTrips
+        ? dayTrips.map(t=>t.orders.filter(p=>!excludedGeoOrders.has(String(p.id)))).filter(t=>t.length)
+        : [orders];
+    const stops = segmentOrders.flatMap(t=>groupedStops(t));
     if (!orders.length) { toast('No hay pedidos incluidos en esta ruta'); return; }
     let dialog = document.getElementById('geoRouteDialog');
     if (!dialog) {
@@ -2566,7 +2618,8 @@ async function openRouteDetails(key, storedOrders = null, displayName = null) {
     routeDetailMap = L.map('geoDetailMap').setView([DEPOT.lat, DEPOT.lng],11);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(routeDetailMap);
     setTimeout(() => { if (requestId===routeDetailRequest) routeDetailMap?.invalidateSize(); },100);
-    const points = [DEPOT,...stops,DEPOT];
+    const points = [DEPOT];
+    segmentOrders.forEach(trip => { points.push(...groupedStops(trip), DEPOT); });
     const coords = points.map(p=>p.lng+','+p.lat).join(';');
     try {
         const response = await fetch('https://router.project-osrm.org/route/v1/driving/'+coords+'?overview=full&geometries=geojson&steps=true');
@@ -2577,43 +2630,56 @@ async function openRouteDetails(key, storedOrders = null, displayName = null) {
         const route = result.routes[0];
         const legs = route.legs || [];
         const consumption = Number(geoSettings.consumption) || 12;
-        // Cada tramo OSRM aporta su propia geometría; el último tramo es exclusivamente el regreso.
-        const outbound = [];
-        const inbound = [];
+        // Cada regreso al depósito es un tramo naranja, incluso entre viajes.
         legs.forEach((leg,i) => {
-            const target = i===legs.length-1 ? inbound : outbound;
-            (leg.steps || []).forEach(step => {
-                const coordinates = step.geometry?.coordinates || [];
-                coordinates.forEach(c => {
-                    if (!target.length || target[target.length-1][0]!==c[1] || target[target.length-1][1]!==c[0])
-                        target.push([c[1],c[0]]);
-                });
-            });
+            const coords = [];
+            (leg.steps || []).forEach(step=>(step.geometry?.coordinates||[]).forEach(c=>{
+                if(!coords.length || coords[coords.length-1][0]!==c[1] ||
+                    coords[coords.length-1][1]!==c[0]) coords.push([c[1],c[0]]);
+            }));
+            const returning = points[i+1] === DEPOT;
+            if(coords.length>1) L.polyline(coords,{
+                color:returning?'#e87917':'#1769d2',weight:5,
+                ...(returning?{dashArray:'9 6'}:{})
+            }).addTo(routeDetailMap);
         });
-        if (outbound.length>1) L.polyline(outbound,{color:'#1769d2',weight:5}).addTo(routeDetailMap);
-        if (inbound.length>1) L.polyline(inbound,{color:'#e87917',weight:5,dashArray:'9 6'}).addTo(routeDetailMap);
-        // Fallback si OSRM no entrega geometría detallada de los tramos.
-        if (outbound.length<2 || inbound.length<2) {
+        if (!legs.some(leg=>(leg.steps||[]).some(step=>step.geometry?.coordinates?.length>1)))
             L.geoJSON(route.geometry,{style:{color:'#1769d2',weight:4}}).addTo(routeDetailMap);
-        }
         const bounds = L.latLngBounds(points.map(p=>[p.lat,p.lng]));
         routeDetailMap.fitBounds(bounds.pad(0.12));
         let cumulativeKm = 0;
+        let tripNumber = 1, stopNumber = 0;
         const rows = legs.map((leg,i) => {
             const km = leg.distance/1000;
             cumulativeKm += km;
             const liters = km*consumption/100;
             const totalLiters = cumulativeKm*consumption/100;
-            const isReturn = i===legs.length-1;
-            const label = isReturn ? 'Regreso al depósito' : ('Parada '+(i+1)+' · '+stops[i].orders.map(p=>'#'+p.numero+' '+nameOf('clientes',p.cliente_id)).join(' / '));
-            return '<div style="padding:8px 0;border-bottom:1px solid #e5e7eb"><b>'+esc(label)+'</b><div class="muted">'+km.toFixed(1)+' km · '+Math.round(leg.duration/60)+' min · '+liters.toFixed(2)+' L tramo · '+totalLiters.toFixed(2)+' L acumulados</div></div>';
+            const isReturn = points[i+1] === DEPOT;
+            if(!isReturn) stopNumber++;
+            const label = isReturn
+                ? 'Viaje '+tripNumber+++' · Regreso al depósito'
+                : 'Viaje '+tripNumber+' · Parada '+stopNumber+' · '+
+                    (points[i+1].orders||[]).map(p=>'#'+p.numero+' '+nameOf('clientes',p.cliente_id)).join(' / ');
+            return '<div style="padding:8px 0;border-bottom:1px solid #e5e7eb"><b>'+
+                esc(label)+'</b><div class="muted">'+km.toFixed(1)+' km · '+
+                Math.round(leg.duration/60)+' min · '+liters.toFixed(2)+
+                ' L tramo · '+totalLiters.toFixed(2)+' L acumulados</div></div>';
         });
         points.forEach((p,i) => {
-            const label = i===0 ? 'Salida · Depósito Pilar' : i===points.length-1 ? 'Regreso · Depósito Pilar' : 'Parada '+i+' · '+stops[i-1].orders.map(o=>'#'+o.numero+' '+nameOf('clientes',o.cliente_id)).join(' / ');
+            const label = i===0 ? 'Salida · Depósito Pilar' : p===DEPOT ?
+                'Regreso · Depósito Pilar' : 'Entrega · '+
+                (p.orders||[]).map(o=>'#'+o.numero+' '+nameOf('clientes',o.cliente_id)).join(' / ');
             const fuel = i===0 ? 0 : legs.slice(0,i).reduce((sum,leg)=>sum+leg.distance,0)/1000*consumption/100;
-            L.marker([p.lat,p.lng]).addTo(routeDetailMap).bindTooltip(esc(label)).bindPopup(esc(label)+'<br>Combustible acumulado: '+fuel.toFixed(2)+' L');
+            L.marker([p.lat,p.lng]).addTo(routeDetailMap).bindTooltip(esc(label))
+                .bindPopup(esc(label)+'<br>Combustible acumulado: '+fuel.toFixed(2)+' L');
         });
-        dialog.querySelector('#geoRouteSummary').textContent = stops.length+' paradas ('+orders.length+' pedidos) · '+(route.distance/1000).toFixed(1)+' km ida y vuelta · '+Math.round(route.duration/60)+' min · '+geoFuelSummary(route.distance/1000);
+        const totalOp = dayTrips ? dayTrips.reduce((sum,trip)=>sum+trip.operationalMinutes,0)
+            : tripOperatingTimes(orders,route.distance/1000,route.duration/60).operationalMinutes;
+        dialog.querySelector('#geoRouteSummary').textContent =
+            segmentOrders.length+' viajes · '+stops.length+' paradas ('+orders.length+
+            ' pedidos) · '+(route.distance/1000).toFixed(1)+' km acumulados · '+
+            Math.round(totalOp)+' min OPERATIVOS · '+Math.round(route.duration/60)+
+            ' min OSRM · '+geoFuelSummary(route.distance/1000);
         dialog.querySelector('#geoRouteStops').innerHTML = rows.join('');
     } catch(e) {
         if(dialog.open && requestId===routeDetailRequest) dialog.querySelector('#geoRouteStops').textContent = e.message;
@@ -2623,10 +2689,11 @@ async function openRouteDetails(key, storedOrders = null, displayName = null) {
 function routeDisplayName(key) {
     const raw = key.startsWith('OPT-') ? key.slice(4) : key;
     const date = raw.split(' · ')[0];
-    if (date === 'SIN FECHA') return 'Sin fecha de entrega';
+    if (date === 'SIN FECHA') return ['Sin fecha de entrega', raw.match(/Jornada [0-9]+/)?.[0], raw.match(/Viaje [0-9]+/)?.[0]].filter(Boolean).join(' · ');
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-    const suffix = key.startsWith('OPT-') ? (raw.match(/Viaje \d+/)?.[0] || '') : '';
-    return m ? 'R-' + m[3] + m[2] + m[1].slice(2) + (suffix ? ' · ' + suffix : '') : raw;
+    const suffix = key.startsWith('OPT-') ? [raw.match(/Jornada [0-9]+/)?.[0], raw.match(/Viaje [0-9]+/)?.[0]].filter(Boolean).join(' · ') : '';
+    return m ? (key.startsWith('OPT-') ? 'Sugerido ' : 'R-') +
+        (key.startsWith('OPT-') ? m[3] + '-' + m[2] + '-' + m[1].slice(2) : m[3] + m[2] + m[1].slice(2)) + (suffix ? ' · ' + suffix : '') : raw;
 }
 
 async function calculateSingleRoute(key, button) {
@@ -2651,6 +2718,23 @@ async function calculateSingleRoute(key, button) {
 
 function routeCard(key, color, orders, details = '') {
     const checked = routeVisibility.get(key) !== false;
+    const dayTrips = optimizedDayTrips.get(key);
+    const orderRows = (tripOrders, tripIndex) => tripOrders.map((p,i)=>`
+        <div class="geo-order-row ${excludedGeoOrders.has(String(p.id))?'geo-order-excluded':''}">
+            <label><input type="checkbox" data-geo-order="${esc(String(p.id))}"
+                ${excludedGeoOrders.has(String(p.id))?'':'checked'}>
+                ${i+1}. #${esc(p.numero)} · ${esc(nameOf('clientes',p.cliente_id))} ·
+                ${Number(p.__bultos ?? bultos(p)).toLocaleString('es-AR')} bultos
+                · Pedido: ${esc(calendarShortDate(p.fecha_pedido))}</label>
+        </div>`).join('');
+    const itinerary = dayTrips ? dayTrips.map((trip,i)=>
+        '<div class="help" style="margin-top:9px;font-weight:700">Viaje '+(i+1)+
+        ' · '+trip.bultos+' bultos · '+trip.km.toFixed(1)+' km · '+
+        Math.round(trip.operationalMinutes)+' min OPERATIVOS ('+
+        Math.round(trip.driveMinutes)+' min OSRM ×'+operationalSettings().trafficFactor+
+        ' + '+trip.timing.load+' carga + '+trip.timing.unload+
+        ' descarga + '+trip.timing.wait+' espera) · Depósito → Clientes → Depósito</div>'+
+        orderRows(trip.orders,i)).join('') : orderRows(orders,0);
 
     return `
         <div class="stop geo-route-card">
@@ -2675,19 +2759,7 @@ function routeCard(key, color, orders, details = '') {
                 ${details || ''}
             </div>
 
-            ${orders.map((p, i) => `
-                <div class="geo-order-row ${excludedGeoOrders.has(String(p.id)) ? 'geo-order-excluded' : ''}">
-                    <label><input type="checkbox" data-geo-order="${esc(String(p.id))}" ${excludedGeoOrders.has(String(p.id)) ? '' : 'checked'}> ${i + 1}. #${esc(p.numero)}
-                    · ${esc(nameOf('clientes', p.cliente_id))}
-                    · ${Number(
-                        p.__bultos ??
-                        orderProducts(p.id).reduce(
-                            (s, x) => s + (+x.cantidad || 0),
-                            0
-                        )
-                    ).toLocaleString('es-AR')} bultos</label>
-                </div>
-            `).join('')}
+            ${itinerary}
         </div>
     `;
 }
@@ -2823,6 +2895,25 @@ function drawMap() {
 async function requestRoadRoute(key, orders, color) {
     orders=orders.filter(p=>!excludedGeoOrders.has(String(p.id)));
     if (!orders.length) return;
+    if (optimizedDayTrips.has(key)) {
+        const trips = optimizedDayTrips.get(key);
+        let km=0, minutes=0;
+        for(let i=0;i<trips.length;i++){
+            const trip=trips[i], syntheticKey=key+' · tramo '+(i+1);
+            await requestRoadRoute(syntheticKey,trip.orders,color);
+            routeLayers.forEach(layer=>{
+                if(layer.routeKey===syntheticKey)layer.routeKey=key;
+            });
+            const summary=routeSummaries.get(syntheticKey);
+            routeSummaries.delete(syntheticKey);
+            km+=trip.km;minutes+=trip.minutes;
+        }
+        const operating=trips.reduce((sum,t)=>sum+t.operationalMinutes,0);
+        routeSummaries.set(key,trips.length+' viajes · '+km.toFixed(1)+
+            ' km acumulados · '+Math.round(operating)+' min OPERATIVOS ('+
+            Math.round(minutes)+' min OSRM) · '+geoFuelSummary(km));
+        return;
+    }
 
     const coords = [
         `${DEPOT.lng},${DEPOT.lat}`,
@@ -2978,168 +3069,394 @@ function nearestOrder(from, orders) {
 
 
 /**
- * Distribuye pedidos en viajes con capacidad limitada:
- * mayor a menor, primer viaje con lugar, y orden por
- * vecino más cercano. Es una heurística.
+ * CVRP con múltiples viajes (heurística de ahorros de Clarke-Wright
+ * + búsqueda local 2-opt). Cada viaje comienza y termina en el depósito.
+ * La capacidad se aplica a cada viaje; kilómetros y tiempo, a la jornada.
+ * El mismo transportista puede efectuar varios viajes en una misma fecha.
+ *
+ * OSRM /table aporta distancias y tiempos por red vial (no Haversine).
+ * El tiempo es tiempo de CONDUCCIÓN; no existen tiempos de servicio
+ * configurados en el sistema. Nunca se infiere una duración de descarga.
+ * La optimización es una simulación: no se escribe en Supabase.
  */
-function packTrips(orders, capacity = 310) {
-    const sorted = [...orders].sort(
-        (a, b) => bultos(b) - bultos(a)
-    );
 
-    const trips = [];
+function countDistinctStops(orders) {
+    return new Set(orders.map(p=>
+        Number(p.latitud).toFixed(5)+','+Number(p.longitud).toFixed(5))).size;
+}
+function operationBreakdown(osrmMinutes, stops, settings=operationalSettings()) {
+    const traffic=osrmMinutes*settings.trafficFactor;
+    const load=settings.loadMinutes;
+    const unload=stops*settings.unloadMinutes;
+    const wait=stops*settings.waitMinutes;
+    return {osrm:osrmMinutes,traffic,load,unload,wait,total:traffic+load+unload+wait};
+}
+function tripOperatingTimes(orders, km, osrmMinutes) {
+    const timing=operationBreakdown(osrmMinutes,countDistinctStops(orders));
+    return {km,driveMinutes:osrmMinutes,operationalMinutes:timing.total,timing};
+}
+const OPT_LIMITS = Object.freeze({
+    maxBultos: 310,
+    maxKm: 200,
+    maxMinutes: 240
+});
 
-    for (const p of sorted) {
-        const qty = bultos(p);
-
-        if (qty > capacity) {
-            trips.push({
-                orders: [p],
-                over: qty
-            });
-
-            continue;
-        }
-
-        let trip = trips.find(
-            t => !t.over && t.bultos + qty <= capacity
-        );
-
-        if (!trip) {
-            trip = {
-                orders: [],
-                bultos: 0
-            };
-
-            trips.push(trip);
-        }
-
-        trip.orders.push(p);
-        trip.bultos += qty;
-    }
-
-    return trips.map(t => {
-        let left = [...t.orders];
-
-        let cur = {
-            latitud: DEPOT.lat,
-            longitud: DEPOT.lng
-        };
-
-        const ordered = [];
-
-        while (left.length) {
-            const n = nearestOrder(cur, left);
-
-            ordered.push(n);
-            left = left.filter(x => x.id !== n.id);
-            cur = n;
-        }
-
-        return {
-            ...t,
-            orders: ordered
-        };
-    });
+function optimizationEligible(p) {
+    return p.estado !== 'PENDIENTE - SIN LIBERAR' &&
+        p.estado !== 'ENTREGADO' &&
+        !excludedGeoOrders.has(String(p.id));
 }
 
+async function roadMatrix(orders) {
+    const coords = [
+        `${DEPOT.lng},${DEPOT.lat}`,
+        ...orders.map(p => `${+p.longitud},${+p.latitud}`)
+    ].join(';');
+    const response = await fetch(
+        'https://router.project-osrm.org/table/v1/driving/' +
+        coords + '?annotations=distance,duration'
+    );
+    if (!response.ok) throw Error('OSRM no responde al cálculo de la matriz vial.');
+    const data = await response.json();
+    if (data.code !== 'Ok' || !data.distances || !data.durations)
+        throw Error('OSRM no pudo calcular la matriz vial: ' + (data.message || data.code));
+    return data;
+}
+
+function routeMeasures(indices, matrix) {
+    const nodes = [0, ...indices.map(i => i + 1), 0];
+    let meters = 0, seconds = 0;
+    for (let i = 1; i < nodes.length; i++) {
+        const a = nodes[i - 1], b = nodes[i];
+        const distance = matrix.distances[a]?.[b];
+        const duration = matrix.durations[a]?.[b];
+        if (!Number.isFinite(distance) || !Number.isFinite(duration))
+            return {meters: Infinity, seconds: Infinity};
+        meters += distance;
+        seconds += duration;
+    }
+    return {meters, seconds};
+}
+
+function routeFits(indices, matrix, loads, orders) {
+    const units = indices.reduce((sum, i) => sum + loads[i], 0);
+    if (units > OPT_LIMITS.maxBultos) return false;
+    const {meters, seconds} = routeMeasures(indices, matrix);
+    const minutes=operationBreakdown(seconds/60,
+        countDistinctStops(indices.map(i=>orders[i]))).total;
+    return meters <= OPT_LIMITS.maxKm * 1000 && minutes <= OPT_LIMITS.maxMinutes;
+}
+
+function improveRoute(indices, matrix, loads, orders) {
+    let best = indices.slice();
+    let changed = true;
+    while (changed) {
+        changed = false;
+        const current = routeMeasures(best, matrix).meters;
+        for (let i = 0; i < best.length - 1 && !changed; i++) {
+            for (let j = i + 1; j < best.length; j++) {
+                const candidate = [
+                    ...best.slice(0, i),
+                    ...best.slice(i, j + 1).reverse(),
+                    ...best.slice(j + 1)
+                ];
+                if (routeFits(candidate, matrix, loads, orders) &&
+                    routeMeasures(candidate, matrix).meters + 0.01 < current) {
+                    best = candidate;
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+    return best;
+}
+
+async function packTrips(orders) {
+    const valid = orders.filter(optimizationEligible);
+    if (!valid.length) return {trips: [], rejected: []};
+
+    const loads = valid.map(bultos);
+    const matrix = await roadMatrix(valid);
+    let routes = [];
+    const rejected = [];
+
+    // Cada pedido arranca como un viaje individual: ningún viaje
+    // sobrecargado ni fuera de límites puede formar parte de la solución.
+    for (let i = 0; i < valid.length; i++) {
+        if (routeFits([i], matrix, loads, valid)) routes.push([i]);
+        else rejected.push(valid[i]);
+    }
+
+    // Ahorros de Clarke-Wright: fusionar dos viajes si se reducen
+    // kilómetros y se mantienen TODAS las restricciones duras.
+    const savings = [];
+    for (let i = 0; i < valid.length; i++) {
+        for (let j = i + 1; j < valid.length; j++) {
+            const direct = matrix.distances[i + 1]?.[j + 1];
+            const reverse = matrix.distances[j + 1]?.[i + 1];
+            if (!Number.isFinite(direct) && !Number.isFinite(reverse)) continue;
+            const saveIJ = matrix.distances[i + 1]?.[0] +
+                matrix.distances[0]?.[j + 1] - direct;
+            const saveJI = matrix.distances[j + 1]?.[0] +
+                matrix.distances[0]?.[i + 1] - reverse;
+            savings.push({i, j, saving: Math.max(saveIJ, saveJI)});
+        }
+    }
+    savings.sort((a, b) => b.saving - a.saving);
+
+    for (const {i, j, saving} of savings) {
+        if (!(saving > 0)) continue;
+        const ri = routes.findIndex(r => r.includes(i));
+        const rj = routes.findIndex(r => r.includes(j));
+        if (ri < 0 || rj < 0 || ri === rj) continue;
+        const a = routes[ri], b = routes[rj];
+        let best = null, bestMeters = Infinity;
+        for (const aa of [a, a.slice().reverse()]) {
+            for (const bb of [b, b.slice().reverse()]) {
+                if (aa[aa.length - 1] !== i || bb[0] !== j) continue;
+                const joined = [...aa, ...bb];
+                if (!routeFits(joined, matrix, loads, valid)) continue;
+                const meters = routeMeasures(joined, matrix).meters;
+                if (meters < bestMeters) {best = joined; bestMeters = meters;}
+            }
+        }
+        for (const aa of [b, b.slice().reverse()]) {
+            for (const bb of [a, a.slice().reverse()]) {
+                if (aa[aa.length - 1] !== j || bb[0] !== i) continue;
+                const joined = [...aa, ...bb];
+                if (!routeFits(joined, matrix, loads, valid)) continue;
+                const meters = routeMeasures(joined, matrix).meters;
+                if (meters < bestMeters) {best = joined; bestMeters = meters;}
+            }
+        }
+        if (best) routes = routes.filter((_, k) => k !== ri && k !== rj).concat([best]);
+    }
+
+    const trips = routes.map(indices => {
+        const improved = improveRoute(indices, matrix, loads, valid);
+        const measures = routeMeasures(improved, matrix);
+        return {
+            orders: improved.map(i => valid[i]),
+            bultos: improved.reduce((sum, i) => sum + loads[i], 0),
+            km: measures.meters / 1000,
+            minutes: measures.seconds / 60,
+            ...tripOperatingTimes(improved.map(i=>valid[i]),measures.meters/1000,measures.seconds/60)
+        };
+    }).sort((a, b) => b.bultos - a.bultos);
+    return {trips, rejected};
+}
+
+
+/** Consolida viajes en jornadas de un transportista con límites acumulados. */
+/** FIFO por fecha de pedido, desempate por cercanía y carga. */
+function compareTripPriority(a,b) {
+    const date = trip => trip.orders.reduce((old,p)=>{
+        const raw = /^\d{4}-\d{2}-\d{2}$/.test(p.fecha_pedido||'')
+            ? p.fecha_pedido : '9999-12-31';
+        return raw < old ? raw : old;
+    },'9999-12-31');
+    return date(a).localeCompare(date(b)) ||
+        a.km-b.km || b.bultos-a.bultos;
+}
+
+/**
+ * Agrupa viajes próximos y prioriza FIFO para ordenar las jornadas;
+ * en fechas fijas FIFO también define cuáles pedidos tienen prioridad.
+ * Cada viaje comienza y termina en el depósito.
+ */
+function packWorkdays(trips, fixedDate = false) {
+    const days=[],rejected=[];
+    const ordered=[...trips].sort(fixedDate?compareTripPriority:
+        (a,b)=>a.km-b.km||compareTripPriority(a,b));
+    for(const trip of ordered){
+        if(!Number.isFinite(trip.km)||!Number.isFinite(trip.operationalMinutes)||
+            trip.bultos>OPT_LIMITS.maxBultos||trip.km>OPT_LIMITS.maxKm||
+            trip.operationalMinutes>OPT_LIMITS.maxMinutes){
+            rejected.push(...trip.orders);
+            continue;
+        }
+        let day=days.find(d=>d.km+trip.km<=OPT_LIMITS.maxKm+1e-8&&
+            d.operationalMinutes+trip.operationalMinutes<=OPT_LIMITS.maxMinutes+1e-8);
+        if(!day){
+            if(fixedDate&&days.length){rejected.push(...trip.orders);continue;}
+            day={trips:[],km:0,minutes:0,operationalMinutes:0};
+            days.push(day);
+        }
+        day.trips.push(trip);
+        day.km+=trip.km;
+        day.minutes+=trip.driveMinutes;
+        day.operationalMinutes+=trip.operationalMinutes;
+    }
+    days.forEach(day=>day.trips.sort(compareTripPriority));
+    days.sort((a,b)=>compareTripPriority(a.trips[0],b.trips[0]));
+    return {days,rejected};
+}
+
+/** Fechas sugeridas: siguiente día hábil, sin pisar días ya programados.
+ * Reutiliza los feriados nacionales del calendario y no guarda cambios.
+ */
+async function suggestWorkday(start, occupied) {
+    const date = new Date(start.getFullYear(),start.getMonth(),start.getDate(),12);
+    const checkedYears=new Set();
+    for(let tries=0; tries<370; tries++) {
+        const y=date.getFullYear();
+        if(!checkedYears.has(y)) {
+            checkedYears.add(y);
+            await loadHolidays(y);
+        }
+        const day=iso(date);
+        const dow=date.getDay();
+        if(dow!==0 && dow!==6 && !holidaysByYear.get(y)?.has(day) &&
+            !occupied.has(day)) {
+            occupied.add(day);
+            return day;
+        }
+        date.setDate(date.getDate()+1);
+    }
+    throw Error('No se encontró un día hábil disponible para la sugerencia.');
+}
+
+/** Verifica el recorrido vial real antes de contabilizarlo en una jornada. */
+async function validateTripRoad(orders) {
+    const stops = groupedStops(orders);
+    const coords = [
+        `${DEPOT.lng},${DEPOT.lat}`,
+        ...stops.map(p => `${p.lng},${p.lat}`),
+        `${DEPOT.lng},${DEPOT.lat}`
+    ].join(';');
+    const response = await fetch('https://router.project-osrm.org/route/v1/driving/' +
+        coords + '?overview=false');
+    if (!response.ok) throw Error('OSRM no respondió durante la validación vial.');
+    const json = await response.json();
+    const route = json.routes?.[0];
+    if (json.code !== 'Ok' || !route ||
+        !Number.isFinite(route.distance) || !Number.isFinite(route.duration))
+        throw Error('Respuesta vial inválida de OSRM.');
+    if ((!route.distance || !route.duration) && stops.some(stop =>
+        Math.abs(stop.lat - DEPOT.lat) > 1e-6 ||
+        Math.abs(stop.lng - DEPOT.lng) > 1e-6))
+        throw Error('OSRM devolvió 0 km/min para un destino fuera del depósito.');
+    return {km: route.distance / 1000, minutes: route.duration / 60};
+}
 
 $('#optimizeRoutes').onclick = async () => {
     if (!map) initMap();
 
     const scope = $('#optimizeScope')?.value || 'all';
-    const dated = new Map([...mapGroups()].map(([k,ps])=>[k,ps.filter(p=>!excludedGeoOrders.has(String(p.id)))]).filter(([,ps])=>ps.length));
-    if (scope === 'planned') for (const key of [...dated.keys()]) if (key.startsWith('SIN FECHA')) dated.delete(key);
-    if (scope === 'unplanned') {
-        for (const key of [...dated.keys()]) if (!key.startsWith('SIN FECHA')) dated.delete(key);
-    }
+    const dated = new Map([...mapGroups()]
+        .map(([key, orders]) => [key, orders.filter(optimizationEligible)])
+        .filter(([, orders]) => orders.length));
+    if (scope === 'planned')
+        for (const key of [...dated.keys()])
+            if (key.startsWith('SIN FECHA')) dated.delete(key);
+    if (scope === 'unplanned')
+        for (const key of [...dated.keys()])
+            if (!key.startsWith('SIN FECHA')) dated.delete(key);
 
     if (!dated.size) {
-        toast(
-            'No hay pedidos con coordenadas para el alcance seleccionado.'
-        );
-
+        toast('No hay pedidos liberados con coordenadas para el alcance seleccionado.');
         return;
     }
 
-    const optimized = new Map();
-
-    for (const [date, orders] of dated) {
-        const trips = packTrips(orders);
-
-        trips.forEach((trip, i) => {
-            optimized.set(
-                `OPT-${date} · Viaje ${i + 1}`,
-                trip.orders.map(p => ({
-                    ...p,
-                    __bultos: bultos(p)
-                }))
-            );
-        });
-    }
-
-    optimizedRoutes = optimized;
-    persistGeoRoutes();
-
-    routeVisibility.clear();
-    routeSummaries.clear();
-
-    drawMap();
-
-    $('#stops').insertAdjacentHTML(
-        'beforeend',
-        `<p class="help">
-            Distribución sugerida mediante agrupación por capacidad
-            (máximo 310 bultos) y vecino más cercano por distancia
-            geográfica. Es una heurística, no garantiza el óptimo
-            matemático.
-        </p>`
-    );
-
-    const keys = [...optimized.keys()];
-
-    $('#optimizeRoutes').disabled = true;
-
+    const button = $('#optimizeRoutes');
+    button.disabled = true;
     try {
-        for (let i = 0; i < keys.length; i++) {
-            const k = keys[i];
-            const orders = optimized.get(k);
 
-            if (orders.some(p => bultos(p) > 310)) {
-                toast(
-                    'Hay un pedido que supera por sí solo los 310 bultos; ' +
-                    'requiere dividir la carga.'
-                );
-
-                continue;
-            }
-
-            await requestRoadRoute(
-                k,
-                orders,
-                ROUTE_COLORS[i % ROUTE_COLORS.length]
-            );
-
-            const meta = [
-                ...document.querySelectorAll('[data-route-meta]')
-            ].find(x => x.dataset.routeMeta === k);
-
-            if (meta) {
-                meta.textContent =
-                    `${orders.length} paradas · ` +
-                    `${routeSummaries.get(k)} · ` +
-                    `${orders.reduce((s, p) => s + bultos(p), 0)} bultos`;
-            }
+        const optimized = new Map(), groupedDays = new Map();
+        const rejected = [], daySummaries = [];
+        const suggestedByDriver = new Map();
+        const dateBase = new Date();
+        dateBase.setHours(12,0,0,0);
+        dateBase.setDate(dateBase.getDate()+1);
+        // Evitar solapar sugerencias con fechas reales de ese transportista.
+        const plannedByDriver = new Map();
+        for(const p of cache.pedidos) {
+            if(!p.fecha_entrega || p.estado==='ENTREGADO')continue;
+            const driver=p.transportista||'Sin transportista';
+            if(!plannedByDriver.has(driver))plannedByDriver.set(driver,new Set());
+            plannedByDriver.get(driver).add(p.fecha_entrega);
         }
 
-        toast(
-            'Distribución sugerida lista. Revisá la capacidad y ' +
-            'las rutas antes de asignar el camión.'
-        );
-    } catch (e) {
-        toast(e.message);
+        // Primero fechas fijas, luego pendientes sin fecha. Se optimiza
+        // únicamente el alcance seleccionado y nunca se persiste la sugerencia.
+        const sortedGroups = [...dated].sort(([a],[b]) =>
+            Number(a.startsWith('SIN FECHA'))-Number(b.startsWith('SIN FECHA')) ||
+            a.localeCompare(b));
+        for (const [group, orders] of sortedGroups) {
+            const result = await packTrips(orders);
+            rejected.push(...result.rejected.map(p=>({pedido:p,grupo:group,
+                reason:'no cabe en un viaje de 310 bultos / límite vial'})));
+            const validated=[];
+            for(const trip of result.trips) {
+                const road=await validateTripRoad(trip.orders);
+                validated.push({...trip,...road,
+                    ...tripOperatingTimes(trip.orders,road.km,road.minutes)});
+            }
+            const fixedDate=!group.startsWith('SIN FECHA');
+            const packed=packWorkdays(validated,fixedDate);
+            rejected.push(...packed.rejected.map(p=>({pedido:p,grupo:group,
+                reason:fixedDate?'sin capacidad disponible en esa fecha':'viaje no factible'})));
+            const driver=group.split(' · ').slice(1).join(' · ')||'Sin transportista';
+            if(!suggestedByDriver.has(driver)) {
+                suggestedByDriver.set(driver,new Set(plannedByDriver.get(driver)||[]));
+            }
+            const occupied=suggestedByDriver.get(driver);
+            for(let i=0;i<packed.days.length;i++) {
+                const day=packed.days[i];
+                const suggestedDate=fixedDate?group.split(' · ')[0]:
+                    await suggestWorkday(dateBase,occupied);
+                const key=`OPT-${suggestedDate} · ${driver} · Jornada ${i+1}`;
+                const trips=day.trips.map(t=>({...t,orders:t.orders.map(p=>({
+                    ...p,__bultos:bultos(p)
+                }))}));
+                // Una sola entrada por jornada, con N subviajes visibles.
+                optimized.set(key,trips.flatMap(t=>t.orders));
+                groupedDays.set(key,trips);
+                daySummaries.push({key,km:day.km,minutes:day.minutes,
+                    operationalMinutes:day.operationalMinutes,
+                    trips:trips.length,fecha:suggestedDate});
+            }
+        }
+        if(daySummaries.some(d=>d.km>OPT_LIMITS.maxKm+1e-8 ||
+            d.operationalMinutes>OPT_LIMITS.maxMinutes+1e-8))
+            throw Error('Se excedieron los límites de una jornada.');
+
+        optimizedRoutes=optimized;
+        optimizedDayTrips=groupedDays;
+        persistGeoRoutes(); // Sólo render; sin writes a Supabase.
+        routeVisibility.clear();
+        routeSummaries.clear();
+        drawMap();
+
+        $('#stops').insertAdjacentHTML('beforeend',
+            '<p class="help"><b>Fechas sugeridas (no programadas):</b> '+
+            'FIFO por fecha de pedido, distancia vial y carga. '+
+            'Viajes de hasta 310 bultos; jornada de hasta 200 km y '+
+            '240 min OPERATIVOS, sumando tránsito, cargas, descargas, esperas y regresos. '+
+            'Se omiten sábados, domingos y feriados nacionales conocidos.</p>'+
+            (rejected.length?'<p class="help">Pedidos no asignables ('+
+                rejected.length+'): '+rejected.map(x=>'#'+
+                esc(String(x.pedido.numero||x.pedido.id))+' ('+
+                esc(x.reason)+')').join(', ')+'.</p>':''));
+
+        const keys=[...optimized.keys()];
+        for(let i=0;i<keys.length;i++) {
+            const key=keys[i], orders=optimized.get(key);
+            await requestRoadRoute(key,orders,ROUTE_COLORS[i % ROUTE_COLORS.length]);
+            const meta=[...document.querySelectorAll('[data-route-meta]')]
+                .find(x=>x.dataset.routeMeta===key);
+            if(meta)meta.textContent=routeSummaries.get(key)+
+                ' · '+orders.length+' pedidos';
+        }
+        toast(rejected.length ?
+            'Sugerencia lista con ' + rejected.length + ' pedidos no asignables. Revisá el detalle.' :
+            'Distribución multiviaje sugerida. Revisá antes de programar.');
+    } catch (error) {
+        toast('No se pudo optimizar: ' + error.message);
+        console.error('Optimización de rutas', error);
     } finally {
-        $('#optimizeRoutes').disabled = false;
+        button.disabled = false;
     }
 };
 

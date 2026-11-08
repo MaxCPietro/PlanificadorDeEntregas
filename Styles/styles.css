@@ -1376,3 +1376,12 @@ header.app-header #logout:not(.hidden){color:white;background:transparent;border
 /* Liberación de pedidos: distinción visual en calendario y filtros. */
 #calendarView .order.PENDIENTE---LIBERADO { border-left-color: #9aa6b2; }
 #calendarView .order.PENDIENTE---SIN-LIBERAR { border-left-color: #c62828; background: #fff2f2; }
+
+/* Parámetros del modelo operativo de distribución (rama de prueba). */
+.geo-operational-settings{display:inline-block;vertical-align:middle;border:1px solid var(--border,#d8e0e8);border-radius:8px;padding:6px 9px;max-width:100%;}
+.geo-operational-settings summary{cursor:pointer;font-weight:650;white-space:nowrap;}
+.geo-operational-fields{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin:10px 0 6px;}
+.geo-operational-fields label{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px;}
+.geo-operational-fields input{width:78px;max-width:100%;}
+.geo-operational-settings small{display:block;max-width:640px;line-height:1.4;}
+@media(max-width:700px){.geo-operational-settings{width:100%;}.geo-operational-fields label{width:100%;justify-content:space-between;}}
