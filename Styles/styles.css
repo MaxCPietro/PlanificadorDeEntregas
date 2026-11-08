@@ -1394,3 +1394,10 @@ header.app-header #logout:not(.hidden){color:white;background:transparent;border
 .geo-route-card .geo-order-row label{font-size:12px;line-height:1.4}
 .geo-route-card .geo-route-meta{margin-left:20px;font-size:11px;line-height:1.35}
 @media(max-width:800px){.geo-route-card .geo-order-row{margin-left:10px}.geo-route-card .geo-route-meta{margin-left:13px}}
+
+/* Sin separación artificial entre cabecera, métricas y pedidos. */
+.geo-route-card .geo-route-head{padding:1px 2px;gap:3px}
+.geo-route-card .route-check{margin-bottom:0;gap:5px}
+.geo-route-card .geo-route-meta{margin-top:0;margin-bottom:1px;line-height:1.2}
+.geo-route-card .geo-order-row{padding-top:1px;padding-bottom:1px}
+.geo-route-card .geo-order-row:first-of-type{margin-top:0}
