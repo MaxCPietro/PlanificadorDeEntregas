@@ -2377,6 +2377,40 @@ function renderStoredRoutes(){
     (p.transportista||'Sin asignar')===r.transportista));
   })
  })).filter(r=>r.pedidos.length);
+ // La BDD guarda un registro por viaje; el listado muestra una jornada
+ // por fecha y transportista, conservando los subviajes para el detalle.
+ const dailyRoutes=new Map();
+ for(const trip of routes){
+  const id=trip.fecha+'|'+trip.transportista;
+  if(!dailyRoutes.has(id))dailyRoutes.set(id,[]);
+  dailyRoutes.get(id).push(trip);
+ }
+ routes.length=0;
+ for(const trips of dailyRoutes.values()){
+  trips.sort((a,b)=>(Number(a.viaje)||1)-(Number(b.viaje)||1));
+  const first=trips[0];
+  const sumField=field=>trips.every(t=>Number.isFinite(t[field]))?
+   trips.reduce((total,t)=>total+t[field],0):null;
+  const km=sumField('distancia_km')==null?null:
+   trips.reduce((total,t)=>total+Number(t.distancia_km||0)+Number(t.retorno_km||0),0);
+  const minutes=sumField('driveMinutes');
+  const liters=km==null?null:trips.reduce((total,t)=>
+   total+(Number(t.distancia_km||0)+Number(t.retorno_km||0))*
+   Number(t.consumo_l_100km||12)/100,0);
+  const cost=liters==null||trips.some(t=>t.precio_litro==null)?null:
+   trips.reduce((total,t)=>
+    total+(Number(t.distancia_km||0)+Number(t.retorno_km||0))*
+    Number(t.consumo_l_100km||12)/100*Number(t.precio_litro),0);
+  const summary=km==null?'':km.toFixed(1)+' km · '+Math.round(minutes||0)+
+   ' min · '+liters.toFixed(1)+' L estimados'+
+   (cost==null?'':' · $ '+cost.toLocaleString('es-AR',{maximumFractionDigits:0}));
+  routes.push({...first,key:first.fecha+' · '+first.transportista,
+   pedidos:trips.flatMap(t=>t.pedidos||[]),
+   storedTrips:trips,
+   storedTripCount:trips.length,
+   totalKm:km,totalLiters:liters,totalCost:cost,
+   driveMinutes:minutes,resumen:summary});
+ }
  // Conciliar calendario y rutas guardadas sin tocar Supabase ni calcular OSRM.
  // Los pedidos programados sin asociación aparecen como rutas pendientes de cálculo.
  const scheduled=new Map();
@@ -2444,8 +2478,8 @@ function renderStoredRoutes(){
   const litersMatch=summary.match(/(\d+(?:[.,]\d+)?)\s*L\s*estimados/i);
   const costMatch=summary.match(/\$\s*([\d.,]+)/);
   const parseDecimal=v=>v==null?null:Number(v.replace(',','.'));
-  const km=kmMatch?parseDecimal(kmMatch[1]):null;
-  const liters=litersMatch?parseDecimal(litersMatch[1]):null;
+  const km=r.storedTrips?r.totalKm:(kmMatch?parseDecimal(kmMatch[1]):null);
+  const liters=r.storedTrips?r.totalLiters:(litersMatch?parseDecimal(litersMatch[1]):null);
   const cost=costMatch?Number(costMatch[1].replace(/\./g,'').replace(',','.')):null;
   const totalBultos=orders.filter(p=>p.__included).reduce((sum,p)=>sum+bultos(p),0);
   // Viajes estimados por capacidad, preservando el orden de los pedidos.
@@ -2462,6 +2496,7 @@ function renderStoredRoutes(){
    }
    cargaActual+=carga;
   }
+  if(r.storedTripCount)viajes=r.storedTripCount;
   // Leer duración vial estructurada desde Supabase, no desde el texto de resumen.
   const driveMinutes=r.virtual?null:
    (Number.isFinite(r.driveMinutes)&&r.driveMinutes>=0?r.driveMinutes:null);
@@ -2527,7 +2562,7 @@ function renderStoredRoutes(){
  host.querySelectorAll('[data-order-id]').forEach(btn=>btn.onclick=()=>openStoredGeoOrder(btn.dataset.orderId));
  host.querySelectorAll('[data-stored-route]').forEach(btn=>btn.onclick=()=>{
   const record=records[Number(btn.dataset.storedRoute)];
-  if(record)openRouteDetails(record.route.key,record.orders.filter(p=>p.__included),record.ruta);
+  if(record)openRouteDetails(record.route.key,record.orders.filter(p=>p.__included),record.ruta,record.route.storedTrips);
  });
  host.querySelectorAll('[data-geo-sort]').forEach(btn=>btn.onclick=()=>{
   const column=btn.dataset.geoSort;
@@ -2664,13 +2699,16 @@ function splitOrdersByVehicleCapacity(orders) {
 }
 let routeDetailMap = null;
 let routeDetailRequest = 0;
-async function openRouteDetails(key, storedOrders = null, displayName = null) {
+async function openRouteDetails(key, storedOrders = null, displayName = null, storedTrips = null) {
     const groups = optimizedRoutes || mapGroups();
     const orders = (storedOrders || groups.get(key) || []).filter(p=>!excludedGeoOrders.has(String(p.id)));
     const dayTrips = optimizedDayTrips.get(key);
-    const segmentOrders = dayTrips
-        ? dayTrips.map(t=>t.orders.filter(p=>!excludedGeoOrders.has(String(p.id)))).filter(t=>t.length)
-        : splitOrdersByVehicleCapacity(orders);
+    const segmentOrders = storedTrips?.length
+        ? storedTrips.map(t=>(t.pedidos||[]).map(link=>orders.find(p=>String(p.id)===String(link.pedido_id)))
+            .filter(Boolean)).filter(t=>t.length)
+        : dayTrips
+            ? dayTrips.map(t=>t.orders.filter(p=>!excludedGeoOrders.has(String(p.id)))).filter(t=>t.length)
+            : splitOrdersByVehicleCapacity(orders);
     const stops = segmentOrders.flatMap(t=>groupedStops(t));
     if (!orders.length) { toast('No hay pedidos incluidos en esta ruta'); return; }
     let dialog = document.getElementById('geoRouteDialog');
