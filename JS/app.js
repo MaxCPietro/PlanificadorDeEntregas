@@ -3177,36 +3177,68 @@ async function packTrips(orders) {
 
 
 /** Consolida viajes en jornadas de un transportista con límites acumulados. */
+/** FIFO por fecha de pedido, desempate por cercanía y carga. */
+function compareTripPriority(a,b) {
+    const date = trip => trip.orders.reduce((old,p)=>{
+        const raw = /^\\d{4}-\\d{2}-\\d{2}$/.test(p.fecha_pedido||'')
+            ? p.fecha_pedido : '9999-12-31';
+        return raw < old ? raw : old;
+    },'9999-12-31');
+    return date(a).localeCompare(date(b)) ||
+        a.km-b.km || b.bultos-a.bultos;
+}
+
+/**
+ * Ordena viajes en jornadas: FIFO estricto entre viajes; dentro de la
+ * misma antigüedad prefiere viajes más próximos y de mayor carga.
+ * Cada viaje comienza y termina en el depósito.
+ */
 function packWorkdays(trips, fixedDate = false) {
-    const days = [], rejected = [];
-    const ordered = [...trips].sort((a,b) =>
-        Math.max(b.km / OPT_LIMITS.maxKm, b.minutes / OPT_LIMITS.maxMinutes) -
-        Math.max(a.km / OPT_LIMITS.maxKm, a.minutes / OPT_LIMITS.maxMinutes));
+    const days=[], rejected=[];
+    const ordered=[...trips].sort(compareTripPriority);
     for (const trip of ordered) {
         if (!Number.isFinite(trip.km) || !Number.isFinite(trip.minutes) ||
-            trip.bultos > OPT_LIMITS.maxBultos ||
-            trip.km > OPT_LIMITS.maxKm || trip.minutes > OPT_LIMITS.maxMinutes) {
-            rejected.push(...trip.orders); continue;
+            trip.bultos > OPT_LIMITS.maxBultos || trip.km > OPT_LIMITS.maxKm ||
+            trip.minutes > OPT_LIMITS.maxMinutes) {
+            rejected.push(...trip.orders);
+            continue;
         }
-        const fitting = days.filter(day =>
-            day.km + trip.km <= OPT_LIMITS.maxKm + 1e-8 &&
-            day.minutes + trip.minutes <= OPT_LIMITS.maxMinutes + 1e-8);
-        fitting.sort((a,b) =>
-            ((OPT_LIMITS.maxKm - a.km - trip.km) / OPT_LIMITS.maxKm +
-            (OPT_LIMITS.maxMinutes - a.minutes - trip.minutes) / OPT_LIMITS.maxMinutes) -
-            ((OPT_LIMITS.maxKm - b.km - trip.km) / OPT_LIMITS.maxKm +
-            (OPT_LIMITS.maxMinutes - b.minutes - trip.minutes) / OPT_LIMITS.maxMinutes));
-        let day = fitting[0];
+        // Primer día factible para no postergar un pedido antiguo.
+        let day = days.find(d => d.km+trip.km <= OPT_LIMITS.maxKm+1e-8 &&
+            d.minutes+trip.minutes <= OPT_LIMITS.maxMinutes+1e-8);
         if (!day) {
-            if (fixedDate && days.length) {rejected.push(...trip.orders);continue;}
-            day = {trips: [], km: 0, minutes: 0};
+            if (fixedDate && days.length) {
+                rejected.push(...trip.orders);
+                continue;
+            }
+            day = {trips:[],km:0,minutes:0};
             days.push(day);
         }
         day.trips.push(trip);
-        day.km += trip.km;
-        day.minutes += trip.minutes;
+        day.km+=trip.km;
+        day.minutes+=trip.minutes;
     }
     return {days,rejected};
+}
+
+/** Fechas sugeridas: siguiente día hábil, sin pisar días ya programados.
+ * Reutiliza los feriados nacionales del calendario y no guarda cambios.
+ */
+async function suggestWorkday(start, occupied) {
+    const date = new Date(start.getFullYear(),start.getMonth(),start.getDate(),12);
+    for(let tries=0; tries<370; tries++) {
+        const y=date.getFullYear();
+        await loadHolidays(y);
+        const day=iso(date);
+        const dow=date.getDay();
+        if(dow!==0 && dow!==6 && !holidaysByYear.get(y)?.has(day) &&
+            !occupied.has(day)) {
+            occupied.add(day);
+            return day;
+        }
+        date.setDate(date.getDate()+1);
+    }
+    throw Error('No se encontró un día hábil disponible para la sugerencia.');
 }
 
 /** Verifica el recorrido vial real antes de contabilizarlo en una jornada. */
@@ -3255,61 +3287,89 @@ $('#optimizeRoutes').onclick = async () => {
     button.disabled = true;
     try {
 
-        const optimized = new Map();
-        const rejected = [];
-        const daySummaries = [];
-        for (const [group, orders] of dated) {
+        const optimized = new Map(), groupedDays = new Map();
+        const rejected = [], daySummaries = [];
+        const suggestedByDriver = new Map();
+        const dateBase = new Date();
+        dateBase.setHours(12,0,0,0);
+        dateBase.setDate(dateBase.getDate()+1);
+        // Evitar solapar sugerencias con fechas reales de ese transportista.
+        const plannedByDriver = new Map();
+        for(const p of cache.pedidos) {
+            if(!p.fecha_entrega || p.estado==='ENTREGADO')continue;
+            const driver=p.transportista||'Sin transportista';
+            if(!plannedByDriver.has(driver))plannedByDriver.set(driver,new Set());
+            plannedByDriver.get(driver).add(p.fecha_entrega);
+        }
+
+        // Primero fechas fijas, luego pendientes sin fecha. Se optimiza
+        // únicamente el alcance seleccionado y nunca se persiste la sugerencia.
+        const sortedGroups = [...dated].sort(([a],[b]) =>
+            Number(a.startsWith('SIN FECHA'))-Number(b.startsWith('SIN FECHA')) ||
+            a.localeCompare(b));
+        for (const [group, orders] of sortedGroups) {
             const result = await packTrips(orders);
-            rejected.push(...result.rejected.map(p => ({pedido:p,grupo:group,reason:'viaje imposible'})));
-            const validated = [];
-            for (const trip of result.trips) {
-                const road = await validateTripRoad(trip.orders);
+            rejected.push(...result.rejected.map(p=>({pedido:p,grupo:group,
+                reason:'no cabe en un viaje de 310 bultos / límite vial'})));
+            const validated=[];
+            for(const trip of result.trips) {
+                const road=await validateTripRoad(trip.orders);
                 validated.push({...trip,...road});
             }
-            const fixedDate = !group.startsWith('SIN FECHA');
-            const packed = packWorkdays(validated, fixedDate);
-            rejected.push(...packed.rejected.map(p => ({pedido:p,grupo:group,
-                reason:fixedDate?'sin capacidad en la jornada de fecha fija':'fuera de límites'})));
-            packed.days.forEach((day, i) => {
-                daySummaries.push({group, shift:i+1, trips:day.trips.length,
-                    km:day.km,minutes:day.minutes});
-                day.trips.forEach((trip,j) => {
-                    const key = `OPT-${group} · Jornada ${i+1} · Viaje ${j+1}`;
-                    optimized.set(key,trip.orders.map(p=>({...p,__bultos:bultos(p)})));
-                });
-            });
+            const fixedDate=!group.startsWith('SIN FECHA');
+            const packed=packWorkdays(validated,fixedDate);
+            rejected.push(...packed.rejected.map(p=>({pedido:p,grupo:group,
+                reason:fixedDate?'sin capacidad disponible en esa fecha':'viaje no factible'})));
+            const driver=group.split(' · ').slice(1).join(' · ')||'Sin transportista';
+            if(!suggestedByDriver.has(driver)) {
+                suggestedByDriver.set(driver,new Set(plannedByDriver.get(driver)||[]));
+            }
+            const occupied=suggestedByDriver.get(driver);
+            for(let i=0;i<packed.days.length;i++) {
+                const day=packed.days[i];
+                const suggestedDate=fixedDate?group.split(' · ')[0]:
+                    await suggestWorkday(dateBase,occupied);
+                const key=`OPT-${suggestedDate} · ${driver} · Jornada ${i+1}`;
+                const trips=day.trips.map(t=>({...t,orders:t.orders.map(p=>({
+                    ...p,__bultos:bultos(p)
+                }))}));
+                // Una sola entrada por jornada, con N subviajes visibles.
+                optimized.set(key,trips.flatMap(t=>t.orders));
+                groupedDays.set(key,trips);
+                daySummaries.push({key,km:day.km,minutes:day.minutes,
+                    trips:trips.length,fecha:suggestedDate});
+            }
         }
-        if (daySummaries.some(day=>day.km>OPT_LIMITS.maxKm+1e-8 ||
-            day.minutes>OPT_LIMITS.maxMinutes+1e-8))
-            throw Error('Presupuesto de jornada excedido.');
+        if(daySummaries.some(d=>d.km>OPT_LIMITS.maxKm+1e-8 ||
+            d.minutes>OPT_LIMITS.maxMinutes+1e-8))
+            throw Error('Se excedieron los límites de una jornada.');
 
-        optimizedRoutes = optimized;
-        persistGeoRoutes(); // Simulación: sin escritura en Supabase.
+        optimizedRoutes=optimized;
+        optimizedDayTrips=groupedDays;
+        persistGeoRoutes(); // Sólo render; sin writes a Supabase.
         routeVisibility.clear();
         routeSummaries.clear();
         drawMap();
 
         $('#stops').insertAdjacentHTML('beforeend',
-            '<p class="help">CVRP multiviaje: hasta 310 bultos por viaje; ' +
-            '200 km y 240 min de conducción ACUMULADOS por jornada, ' +
-            'incluyendo cada regreso al depósito. Pedidos sin liberar excluidos.</p>' +
-            daySummaries.map(day=>'<p class="help"><b>'+esc(day.group)+
-                ' · Jornada '+day.shift+'</b>: '+day.trips+' viajes · '+
-                day.km.toFixed(1)+' km acumulados · '+Math.round(day.minutes)+
-                ' min de conducción acumulados.</p>').join('') +
-            (rejected.length ? '<p class="help">Pedidos sin asignar ('+rejected.length+
-                '): '+rejected.map(x=>'#'+esc(String(x.pedido.numero||x.pedido.id))+
-                ' ('+esc(x.reason)+')').join(', ')+'. Revisar manualmente.</p>':''));
+            '<p class="help"><b>Fechas sugeridas (no programadas):</b> '+
+            'FIFO por fecha de pedido, distancia vial y carga. '+
+            'Viajes de hasta 310 bultos; jornada de hasta 200 km y '+
+            '240 min de conducción, sumando cada regreso al depósito. '+
+            'Se omiten sábados, domingos y feriados nacionales conocidos.</p>'+
+            (rejected.length?'<p class="help">Pedidos no asignables ('+
+                rejected.length+'): '+rejected.map(x=>'#'+
+                esc(String(x.pedido.numero||x.pedido.id))+' ('+
+                esc(x.reason)+')').join(', ')+'.</p>':''));
 
-        const keys = [...optimized.keys()];
-        for (let i=0;i<keys.length;i++) {
-            const key=keys[i],orders=optimized.get(key);
+        const keys=[...optimized.keys()];
+        for(let i=0;i<keys.length;i++) {
+            const key=keys[i], orders=optimized.get(key);
             await requestRoadRoute(key,orders,ROUTE_COLORS[i % ROUTE_COLORS.length]);
             const meta=[...document.querySelectorAll('[data-route-meta]')]
                 .find(x=>x.dataset.routeMeta===key);
-            if(meta) meta.textContent =
-                `${orders.length} pedidos · ${routeSummaries.get(key)} · `+
-                `${orders.reduce((sum,p)=>sum+bultos(p),0)} bultos`;
+            if(meta)meta.textContent=routeSummaries.get(key)+
+                ' · '+orders.length+' pedidos';
         }
         toast(rejected.length ?
             'Sugerencia lista con ' + rejected.length + ' pedidos no asignables. Revisá el detalle.' :
