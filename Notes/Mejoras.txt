@@ -14,11 +14,13 @@ OK 2) Sacar los fitros de arriba y ponerlos donde correspondan en cada subsecci√
 OK 3) Paginacion
 
 Version 6.1
+* que en la ficha de pueda distiguir si la vta es remito o factura.
+* Mejorar algoritmo de optimizacion
 * Agrupar los pedidos por viajes
 * Que las rutas aparezcan abajo y se pueda no volver al deposito.
 * que se puedan ordenar las paradas de las rutas.
 
-Version 6.1
+Version 6.2
 * Base de datos de clientes
 * Gestion de Pedidos.
     * Que cargue el vendedor autom√°ticamente
@@ -28,7 +30,7 @@ Version 6.1
 Version 7
 * Control de Stock
 
-Version 7
+Version 8
 * Migrar a Base de datos de DonWeb
 * Publicar la app en DonWeb
 
