@@ -2373,6 +2373,29 @@ function renderStoredRoutes(){
     (p.transportista||'Sin asignar')===r.transportista));
   })
  })).filter(r=>r.pedidos.length);
+ // Conciliar calendario y rutas guardadas sin tocar Supabase ni calcular OSRM.
+ // Los pedidos programados sin asociación aparecen como rutas pendientes de cálculo.
+ const scheduled=new Map();
+ for(const p of cache.pedidos){
+  if(!p.fecha_entrega||isPendingStatus(p.estado))continue;
+  const driver=p.transportista||'Sin asignar';
+  const key=p.fecha_entrega+'|'+driver;
+  if(!scheduled.has(key))scheduled.set(key,[]);
+  scheduled.get(key).push(p);
+ }
+ for(const [group,orders] of scheduled){
+  const separator=group.indexOf('|');
+  const date=group.slice(0,separator),driver=group.slice(separator+1);
+  const matching=routes.filter(r=>r.fecha===date&&r.transportista===driver);
+  const linked=new Set(matching.flatMap(r=>(r.pedidos||[]).map(link=>String(link.pedido_id))));
+  const missing=orders.filter(p=>!linked.has(String(p.id)));
+  if(!missing.length)continue;
+  // Si existe ruta real, conservar su geometría pero no asociar métricas
+  // antiguas a pedidos nuevos. Estos se muestran en una fila independiente.
+  routes.push({key:date+' · '+driver,fecha:date,transportista:driver,
+   pedidos:missing.map((p,i)=>({pedido_id:p.id,incluido:true,orden:i+1})),
+   resumen:'',virtual:true,virtualPlanned:true});
+ }
  // Los pedidos sin planificar no tienen ruta real: se muestran como agrupaciones virtuales.
  const pendingByDriver=new Map();
  cache.pedidos.filter(p=>isPendingStatus(p.estado)||!p.fecha_entrega).forEach(p=>{
@@ -2407,10 +2430,10 @@ function renderStoredRoutes(){
    return p?{...p,__included:link.incluido!==false,__order:link.orden}:null;
   }).filter(Boolean).sort((x,y)=>(x.__order||0)-(y.__order||0));
   const stops=groupedStops(orders.filter(p=>p.__included&&p.latitud!=null&&p.longitud!=null&&Number.isFinite(+p.latitud)&&Number.isFinite(+p.longitud)));
-  const [status,label]=r.virtual?[r.pendingStatus,r.pendingStatus==='PENDIENTE - SIN LIBERAR'?'Sin liberar':'Sin planificar']:statusFor(r.fecha);
+  const [status,label]=r.virtual&&!r.virtualPlanned?[r.pendingStatus,r.pendingStatus==='PENDIENTE - SIN LIBERAR'?'Sin liberar':'Sin planificar']:statusFor(r.fecha);
   const n=(sequenceByDate.get(r.fecha)||0)+1;
   sequenceByDate.set(r.fecha,n);
-  const base=r.virtual?'Sin planificar':routeDisplayName(r.key);
+  const base=r.virtual&&!r.virtualPlanned?'Sin planificar':routeDisplayName(r.key);
   const routeName=countByDate.get(r.fecha)>1?base+'-'+n:base;
   const summary=r.resumen||'';
   const kmMatch=summary.match(/(\d+(?:[.,]\d+)?)\s*km\b/i);
@@ -2427,7 +2450,7 @@ function renderStoredRoutes(){
    return '<button type="button" class="geo-order-tooltip" data-order-id="'+esc(String(p.id))+'" title="'+esc(tooltip).replaceAll('"','&quot;')+'">#'+esc(p.numero)+'</button>'+(p.__included?'':' (excluido)');
   }).join(', ');
   const cells=[
-   r.virtual?'<strong>'+esc(routeName)+'</strong>':'<button type="button" class="geo-route-link" data-stored-route="'+index+'" title="Ver detalle de '+esc(routeName)+'">'+esc(routeName)+'</button>',
+   r.virtual?'<strong title="'+(r.virtualPlanned?'Planificada, pendiente de cálculo vial':'Sin programar')+'">'+esc(routeName)+'</strong>':'<button type="button" class="geo-route-link" data-stored-route="'+index+'" title="Ver detalle de '+esc(routeName)+'">'+esc(routeName)+'</button>',
    esc(geoDisplayDate(r.fecha)),esc(r.transportista||'—'),String(stops.length),
    numbers,String(totalBultos),'<span class="status-badge status-'+status.replaceAll(' ','-')+'">'+esc(label)+'</span>',formatNumber(km),formatNumber(liters),
    cost==null?'':'$ '+cost.toLocaleString('es-AR',{maximumFractionDigits:0}),
