@@ -2486,7 +2486,8 @@ function renderStoredRoutes(){
   const cells=[
    r.virtual?'<strong title="'+(r.virtualPlanned?'Planificada, pendiente de cálculo vial':'Sin programar')+'">'+esc(routeName)+'</strong>':'<button type="button" class="geo-route-link" data-stored-route="'+index+'" title="Ver detalle de '+esc(routeName)+'">'+esc(routeName)+'</button>',
    esc(geoDisplayDate(r.fecha)),esc(r.transportista||'—'),
-   viajes==null?'—':String(viajes),String(stops.length),numbers,
+   status==='PENDIENTE - SIN LIBERAR'?'':(viajes==null?'—':String(viajes)),
+   status==='PENDIENTE - SIN LIBERAR'?'':String(stops.length),numbers,
    '<span class="status-badge status-'+status.replaceAll(' ','-')+'">'+esc(label)+'</span>',
    String(totalBultos),formatNumber(km),timeLabel,formatNumber(liters),
    cost==null?'':'$ '+cost.toLocaleString('es-AR',{maximumFractionDigits:0}),
@@ -2558,6 +2559,7 @@ function initMap() {
 function mapped() {
     return cache.pedidos.filter(p =>
         p.estado !== 'ENTREGADO' &&
+        p.estado !== 'PENDIENTE - SIN LIBERAR' &&
         p.latitud != null &&
         p.longitud != null &&
         Number.isFinite(+p.latitud) &&
@@ -2796,6 +2798,18 @@ async function calculateSingleRoute(key, button) {
     finally { button.disabled = false; }
 }
 
+function formatGeoRouteMeta(summary) {
+    if(!summary)return '';
+    const km=summary.match(/(\\d+(?:[.,]\\d+)?)\\s*km\\b/i);
+    const minutes=summary.match(/(\\d+(?:[.,]\\d+)?)\\s*min\\b/i);
+    const parts=[];
+    if(km)parts.push(km[1]+' km');
+    if(minutes){
+        const value=Math.round(Number(minutes[1].replace(',','.')));
+        parts.push(Math.floor(value/60)+'h '+value%60+'m');
+    }
+    return parts.join(' · ');
+}
 function routeCard(key, color, orders, details = '') {
     const checked = routeVisibility.get(key) !== false;
     const dayTrips = optimizedDayTrips.get(key);
@@ -2810,7 +2824,7 @@ function routeCard(key, color, orders, details = '') {
     const itinerary = dayTrips ? dayTrips.map((trip,i)=>
         '<div class="help" style="margin-top:9px;font-weight:700">Viaje '+(i+1)+
         ' · '+trip.bultos+' bultos · '+trip.km.toFixed(1)+' km · '+
-        Math.round(trip.operationalMinutes)+' min OPERATIVOS ('+
+        Math.floor(Math.round(trip.operationalMinutes)/60)+'h '+(Math.round(trip.operationalMinutes)%60)+'m OPERATIVOS ('+
         Math.round(trip.driveMinutes)+' min OSRM ×'+operationalSettings().trafficFactor+
         ' + '+trip.timing.load+' carga + '+trip.timing.unload+
         ' descarga + '+trip.timing.wait+' espera) · Depósito → Clientes → Depósito</div>'+
@@ -2835,7 +2849,7 @@ function routeCard(key, color, orders, details = '') {
             <button type="button" data-calc-route="${esc(key)}" title="Calcular únicamente esta ruta" class="geo-calc-route" aria-label="Calcular esta ruta">↻</button>
             </div>
 
-            <div class="muted" data-route-meta="${esc(key)}">
+            <div class="muted geo-route-meta" data-route-meta="${esc(key)}">
                 ${details || ''}
             </div>
 
@@ -2884,6 +2898,11 @@ function drawMap() {
         </div>
     `;
 
+    const mapElement=document.getElementById('map');
+    if(mapElement){
+        mapElement.style.height=Math.min(1100,Math.max(560,groups.size*105))+'px';
+        requestAnimationFrame(()=>map?.invalidateSize());
+    }
     const keys = [...groups.keys()].sort((x, y) =>
         x === 'SIN FECHA' ? 1 :
         y === 'SIN FECHA' ? -1 :
@@ -2913,13 +2932,13 @@ function drawMap() {
                 key,
                 color,
                 orders,
-                routeSummaries.get(key) || ''
+                formatGeoRouteMeta(routeSummaries.get(key) || '')
             )
         );
     });
 
     const missing = cache.pedidos.filter(p =>
-        !['ENTREGADO'].includes(p.estado) &&
+        !['ENTREGADO','PENDIENTE - SIN LIBERAR'].includes(p.estado) &&
         (p.latitud == null || p.longitud == null)
     );
 
