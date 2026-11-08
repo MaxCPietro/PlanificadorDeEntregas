@@ -41,3 +41,27 @@
 - Validación de regresión sintética: #52 (51,6 km; 55 min; 300 bultos), #51 (13,4 km; 14 min; 300 bultos), #47 (43,7 km; 39 min; 300 bultos) -> **1 jornada; 3 viajes; 108,7 km; 108 minutos**.
 - Caso agregado: un viaje más antiguo de 111,4 km y 160 bultos se asigna a una jornada anterior y #52/#51/#47 se consolidan en la siguiente jornada.
 - Las pruebas son lógicas con datos de ejemplo. Antes de fusionar se requiere prueba integral con pedidos reales y OSRM.
+
+## Mejora: presupuesto de 240 minutos OPERATIVOS (8/11/2026)
+Se reemplaza el control por tiempo de conducción por una restricción dura de **240 minutos de operación por jornada**:
+
+`tiempo_operativo_viaje = OSRM_min × factor_transito + minutos_carga_por_viaje + paradas_únicas × (min_descarga + min_espera)`.
+
+- Valores **iniciales editables**: factor de tránsito **1,20**, carga **15 min por viaje**, descarga **20 min por parada**, espera **10 min por parada**.
+- La carga se cuenta **una vez por viaje**, incluido el primero. La descarga y espera se aplican una vez por parada geográfica; si dos pedidos comparten coordenadas se considera una única parada (modelo simplificado).
+- El conductor regresa al depósito entre viajes; los minutos viales de cada regreso están incluidos en OSRM.
+- El factor 1,20 es una **hipótesis configurable** y no información de congestión en tiempo real.
+- Se siguen manteniendo **310 bultos por viaje** y **200 km acumulados por jornada**.
+- La restricción de 240 minutos se comprueba en la creación de viajes y en la consolidación de jornadas tras revalidar OSRM.
+- Los parámetros están bajo **Tiempos operativos** en el mapa, guardados **sólo en LocalStorage**. Modificar un parámetro invalida la sugerencia anterior y exige ejecutar nuevamente la optimización. No hay cambios de SQL ni escritura de rutas.
+- Los tiempos operativos y los minutos OSRM se distinguen en tarjetas, resumen y detalle.
+
+### Casos de regresión ejecutados (sintéticos, no navegador)
+- Un viaje de 40 km / 60 min OSRM, una parada: 72 min de conducción corregida + 15 carga + 20 descarga + 10 espera = **117 min operativos**.
+- Cuatro pedidos (#52, #47, #48, #51) con los tramos publicados en la captura previa y los defaults: **2 jornadas**: primera 57,1 km y 152,4 min operativos (#51, #47), segunda 95,3 km y 211,2 min (#48, #52). Los valores dependerán de la ubicación y del OSRM real.
+- Si el tiempo operativo de un viaje excede 240 min, debe declararse no asignable y nunca entrar en una jornada.
+- Paradas de dos pedidos con las mismas coordenadas: una sola descarga/espera.
+- Revisar en navegador real antes de merge; validar render responsive, tiempos de servicio apropiados y disponibilidad de OSRM.
+
+### Límites del modelo
+No se incluyen disponibilidad horaria del cliente, descansos, feriados locales no reportados, ni carga proporcional al número de bultos. Los tiempos de descarga y espera son fijos por parada hasta que existan datos observados.
