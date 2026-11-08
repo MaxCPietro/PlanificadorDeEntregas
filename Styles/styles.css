@@ -1385,3 +1385,12 @@ header.app-header #logout:not(.hidden){color:white;background:transparent;border
 .geo-operational-fields input{width:78px;max-width:100%;}
 .geo-operational-settings small{display:block;max-width:640px;line-height:1.4;}
 @media(max-width:700px){.geo-operational-settings{width:100%;}.geo-operational-fields label{width:100%;justify-content:space-between;}}
+
+/* Panel lateral de rutas: jerarquía visual y densidad mejoradas. */
+.mapgrid{align-items:start}
+.geo-route-card{padding:7px 8px}
+.geo-route-head [data-open-route]{font-size:14px!important;line-height:1.35}
+.geo-route-card .geo-order-row{margin-left:17px;padding:3px 2px;font-size:12px;line-height:1.4}
+.geo-route-card .geo-order-row label{font-size:12px;line-height:1.4}
+.geo-route-card .geo-route-meta{margin-left:20px;font-size:11px;line-height:1.35}
+@media(max-width:800px){.geo-route-card .geo-order-row{margin-left:10px}.geo-route-card .geo-route-meta{margin-left:13px}}
