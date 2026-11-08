@@ -3356,7 +3356,6 @@ function packWorkdays(trips, fixedDate = false) {
         let day=days.find(d=>d.km+trip.km<=OPT_LIMITS.maxKm+1e-8&&
             d.operationalMinutes+trip.operationalMinutes<=OPT_LIMITS.maxMinutes+1e-8);
         if(!day){
-            if(fixedDate&&days.length){rejected.push(...trip.orders);continue;}
             day={trips:[],km:0,minutes:0,operationalMinutes:0};
             days.push(day);
         }
@@ -3473,16 +3472,22 @@ $('#optimizeRoutes').onclick = async () => {
             const fixedDate=!group.startsWith('SIN FECHA');
             const packed=packWorkdays(validated,fixedDate);
             rejected.push(...packed.rejected.map(p=>({pedido:p,grupo:group,
-                reason:fixedDate?'sin capacidad disponible en esa fecha':'viaje no factible'})));
+                reason:'viaje no factible dentro de 310 bultos, 200 km o 4 h operativas'})));
             const driver=group.split(' · ').slice(1).join(' · ')||'Sin transportista';
             if(!suggestedByDriver.has(driver)) {
                 suggestedByDriver.set(driver,new Set(plannedByDriver.get(driver)||[]));
             }
             const occupied=suggestedByDriver.get(driver);
+            if(fixedDate)occupied.add(group.split(' · ')[0]);
             for(let i=0;i<packed.days.length;i++) {
                 const day=packed.days[i];
-                const suggestedDate=fixedDate?group.split(' · ')[0]:
-                    await suggestWorkday(dateBase,occupied);
+                const originalDate=fixedDate?group.split(' · ')[0]:null;
+                // El primer día conserva la fecha prevista; el excedente
+                // pasa a días hábiles sugeridos, sin modificar pedidos.
+                const suggestedDate=fixedDate&&i===0?originalDate:
+                    await suggestWorkday(fixedDate
+                        ?new Date(originalDate+'T12:00:00')
+                        :dateBase,occupied);
                 const key=`OPT-${suggestedDate} · ${driver} · Jornada ${i+1}`;
                 const trips=day.trips.map(t=>({...t,orders:t.orders.map(p=>({
                     ...p,__bultos:bultos(p)
