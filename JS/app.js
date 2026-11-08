@@ -2645,7 +2645,7 @@ function routeDisplayName(key) {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
     const suffix = key.startsWith('OPT-') ? [raw.match(/Jornada [0-9]+/)?.[0], raw.match(/Viaje [0-9]+/)?.[0]].filter(Boolean).join(' · ') : '';
     return m ? (key.startsWith('OPT-') ? 'Sugerido ' : 'R-') +
-        m[3] + m[2] + m[1].slice(2) + (suffix ? ' · ' + suffix : '') : raw;
+        (key.startsWith('OPT-') ? m[3] + '-' + m[2] + '-' + m[1].slice(2) : m[3] + m[2] + m[1].slice(2)) + (suffix ? ' · ' + suffix : '') : raw;
 }
 
 async function calculateSingleRoute(key, button) {
