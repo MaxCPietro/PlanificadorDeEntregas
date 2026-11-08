@@ -2673,11 +2673,13 @@ async function openRouteDetails(key, storedOrders = null, displayName = null) {
             L.marker([p.lat,p.lng]).addTo(routeDetailMap).bindTooltip(esc(label))
                 .bindPopup(esc(label)+'<br>Combustible acumulado: '+fuel.toFixed(2)+' L');
         });
+        const totalOp = dayTrips ? dayTrips.reduce((sum,trip)=>sum+trip.operationalMinutes,0)
+            : tripOperatingTimes(orders,route.distance/1000,route.duration/60).operationalMinutes;
         dialog.querySelector('#geoRouteSummary').textContent =
             segmentOrders.length+' viajes · '+stops.length+' paradas ('+orders.length+
             ' pedidos) · '+(route.distance/1000).toFixed(1)+' km acumulados · '+
-            Math.round(route.duration/60)+' min de conducción · '+
-            geoFuelSummary(route.distance/1000);
+            Math.round(totalOp)+' min OPERATIVOS · '+Math.round(route.duration/60)+
+            ' min OSRM · '+geoFuelSummary(route.distance/1000);
         dialog.querySelector('#geoRouteStops').innerHTML = rows.join('');
     } catch(e) {
         if(dialog.open && requestId===routeDetailRequest) dialog.querySelector('#geoRouteStops').textContent = e.message;
