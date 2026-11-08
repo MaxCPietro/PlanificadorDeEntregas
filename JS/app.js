@@ -2978,168 +2978,262 @@ function nearestOrder(from, orders) {
 
 
 /**
- * Distribuye pedidos en viajes con capacidad limitada:
- * mayor a menor, primer viaje con lugar, y orden por
- * vecino más cercano. Es una heurística.
+ * CVRP con múltiples viajes (heurística de ahorros de Clarke-Wright
+ * + búsqueda local 2-opt). Cada viaje comienza y termina en el depósito.
+ * Los límites de distancia y tiempo son por viaje completo, NO por tramo.
+ * El mismo transportista puede efectuar varios viajes en una misma fecha.
+ *
+ * OSRM /table aporta distancias y tiempos por red vial (no Haversine).
+ * El tiempo es tiempo de CONDUCCIÓN; no existen tiempos de servicio
+ * configurados en el sistema. Nunca se infiere una duración de descarga.
+ * La optimización es una simulación: no se escribe en Supabase.
  */
-function packTrips(orders, capacity = 310) {
-    const sorted = [...orders].sort(
-        (a, b) => bultos(b) - bultos(a)
-    );
+const OPT_LIMITS = Object.freeze({
+    maxBultos: 310,
+    maxKm: 200,
+    maxMinutes: 240
+});
 
-    const trips = [];
-
-    for (const p of sorted) {
-        const qty = bultos(p);
-
-        if (qty > capacity) {
-            trips.push({
-                orders: [p],
-                over: qty
-            });
-
-            continue;
-        }
-
-        let trip = trips.find(
-            t => !t.over && t.bultos + qty <= capacity
-        );
-
-        if (!trip) {
-            trip = {
-                orders: [],
-                bultos: 0
-            };
-
-            trips.push(trip);
-        }
-
-        trip.orders.push(p);
-        trip.bultos += qty;
-    }
-
-    return trips.map(t => {
-        let left = [...t.orders];
-
-        let cur = {
-            latitud: DEPOT.lat,
-            longitud: DEPOT.lng
-        };
-
-        const ordered = [];
-
-        while (left.length) {
-            const n = nearestOrder(cur, left);
-
-            ordered.push(n);
-            left = left.filter(x => x.id !== n.id);
-            cur = n;
-        }
-
-        return {
-            ...t,
-            orders: ordered
-        };
-    });
+function optimizationEligible(p) {
+    return p.estado !== 'PENDIENTE - SIN LIBERAR' &&
+        p.estado !== 'ENTREGADO' &&
+        !excludedGeoOrders.has(String(p.id));
 }
 
+async function roadMatrix(orders) {
+    const coords = [
+        `${DEPOT.lng},${DEPOT.lat}`,
+        ...orders.map(p => `${+p.longitud},${+p.latitud}`)
+    ].join(';');
+    const response = await fetch(
+        'https://router.project-osrm.org/table/v1/driving/' +
+        coords + '?annotations=distance,duration'
+    );
+    if (!response.ok) throw Error('OSRM no responde al cálculo de la matriz vial.');
+    const data = await response.json();
+    if (data.code !== 'Ok' || !data.distances || !data.durations)
+        throw Error('OSRM no pudo calcular la matriz vial: ' + (data.message || data.code));
+    return data;
+}
+
+function routeMeasures(indices, matrix) {
+    const nodes = [0, ...indices.map(i => i + 1), 0];
+    let meters = 0, seconds = 0;
+    for (let i = 1; i < nodes.length; i++) {
+        const a = nodes[i - 1], b = nodes[i];
+        const distance = matrix.distances[a]?.[b];
+        const duration = matrix.durations[a]?.[b];
+        if (!Number.isFinite(distance) || !Number.isFinite(duration))
+            return {meters: Infinity, seconds: Infinity};
+        meters += distance;
+        seconds += duration;
+    }
+    return {meters, seconds};
+}
+
+function routeFits(indices, matrix, loads) {
+    const units = indices.reduce((sum, i) => sum + loads[i], 0);
+    if (units > OPT_LIMITS.maxBultos) return false;
+    const {meters, seconds} = routeMeasures(indices, matrix);
+    return meters <= OPT_LIMITS.maxKm * 1000 &&
+        seconds <= OPT_LIMITS.maxMinutes * 60;
+}
+
+function improveRoute(indices, matrix, loads) {
+    let best = indices.slice();
+    let changed = true;
+    while (changed) {
+        changed = false;
+        const current = routeMeasures(best, matrix).meters;
+        for (let i = 0; i < best.length - 1 && !changed; i++) {
+            for (let j = i + 1; j < best.length; j++) {
+                const candidate = [
+                    ...best.slice(0, i),
+                    ...best.slice(i, j + 1).reverse(),
+                    ...best.slice(j + 1)
+                ];
+                if (routeFits(candidate, matrix, loads) &&
+                    routeMeasures(candidate, matrix).meters + 0.01 < current) {
+                    best = candidate;
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+    return best;
+}
+
+async function packTrips(orders) {
+    const valid = orders.filter(optimizationEligible);
+    if (!valid.length) return {trips: [], rejected: []};
+
+    const loads = valid.map(bultos);
+    const matrix = await roadMatrix(valid);
+    let routes = [];
+    const rejected = [];
+
+    // Cada pedido arranca como un viaje individual: ningún viaje
+    // sobrecargado ni fuera de límites puede formar parte de la solución.
+    for (let i = 0; i < valid.length; i++) {
+        if (routeFits([i], matrix, loads)) routes.push([i]);
+        else rejected.push(valid[i]);
+    }
+
+    // Ahorros de Clarke-Wright: fusionar dos viajes si se reducen
+    // kilómetros y se mantienen TODAS las restricciones duras.
+    const savings = [];
+    for (let i = 0; i < valid.length; i++) {
+        for (let j = i + 1; j < valid.length; j++) {
+            const direct = matrix.distances[i + 1]?.[j + 1];
+            const reverse = matrix.distances[j + 1]?.[i + 1];
+            if (!Number.isFinite(direct) && !Number.isFinite(reverse)) continue;
+            const saveIJ = matrix.distances[i + 1]?.[0] +
+                matrix.distances[0]?.[j + 1] - direct;
+            const saveJI = matrix.distances[j + 1]?.[0] +
+                matrix.distances[0]?.[i + 1] - reverse;
+            savings.push({i, j, saving: Math.max(saveIJ, saveJI)});
+        }
+    }
+    savings.sort((a, b) => b.saving - a.saving);
+
+    for (const {i, j, saving} of savings) {
+        if (!(saving > 0)) continue;
+        const ri = routes.findIndex(r => r.includes(i));
+        const rj = routes.findIndex(r => r.includes(j));
+        if (ri < 0 || rj < 0 || ri === rj) continue;
+        const a = routes[ri], b = routes[rj];
+        let best = null, bestMeters = Infinity;
+        for (const aa of [a, a.slice().reverse()]) {
+            for (const bb of [b, b.slice().reverse()]) {
+                if (aa[aa.length - 1] !== i || bb[0] !== j) continue;
+                const joined = [...aa, ...bb];
+                if (!routeFits(joined, matrix, loads)) continue;
+                const meters = routeMeasures(joined, matrix).meters;
+                if (meters < bestMeters) {best = joined; bestMeters = meters;}
+            }
+        }
+        for (const aa of [b, b.slice().reverse()]) {
+            for (const bb of [a, a.slice().reverse()]) {
+                if (aa[aa.length - 1] !== j || bb[0] !== i) continue;
+                const joined = [...aa, ...bb];
+                if (!routeFits(joined, matrix, loads)) continue;
+                const meters = routeMeasures(joined, matrix).meters;
+                if (meters < bestMeters) {best = joined; bestMeters = meters;}
+            }
+        }
+        if (best) routes = routes.filter((_, k) => k !== ri && k !== rj).concat([best]);
+    }
+
+    const trips = routes.map(indices => {
+        const improved = improveRoute(indices, matrix, loads);
+        const measures = routeMeasures(improved, matrix);
+        return {
+            orders: improved.map(i => valid[i]),
+            bultos: improved.reduce((sum, i) => sum + loads[i], 0),
+            km: measures.meters / 1000,
+            minutes: measures.seconds / 60
+        };
+    }).sort((a, b) => b.bultos - a.bultos);
+    return {trips, rejected};
+}
 
 $('#optimizeRoutes').onclick = async () => {
     if (!map) initMap();
 
     const scope = $('#optimizeScope')?.value || 'all';
-    const dated = new Map([...mapGroups()].map(([k,ps])=>[k,ps.filter(p=>!excludedGeoOrders.has(String(p.id)))]).filter(([,ps])=>ps.length));
-    if (scope === 'planned') for (const key of [...dated.keys()]) if (key.startsWith('SIN FECHA')) dated.delete(key);
-    if (scope === 'unplanned') {
-        for (const key of [...dated.keys()]) if (!key.startsWith('SIN FECHA')) dated.delete(key);
-    }
+    const dated = new Map([...mapGroups()]
+        .map(([key, orders]) => [key, orders.filter(optimizationEligible)])
+        .filter(([, orders]) => orders.length));
+    if (scope === 'planned')
+        for (const key of [...dated.keys()])
+            if (key.startsWith('SIN FECHA')) dated.delete(key);
+    if (scope === 'unplanned')
+        for (const key of [...dated.keys()])
+            if (!key.startsWith('SIN FECHA')) dated.delete(key);
 
     if (!dated.size) {
-        toast(
-            'No hay pedidos con coordenadas para el alcance seleccionado.'
-        );
-
+        toast('No hay pedidos liberados con coordenadas para el alcance seleccionado.');
         return;
     }
 
-    const optimized = new Map();
-
-    for (const [date, orders] of dated) {
-        const trips = packTrips(orders);
-
-        trips.forEach((trip, i) => {
-            optimized.set(
-                `OPT-${date} · Viaje ${i + 1}`,
-                trip.orders.map(p => ({
-                    ...p,
-                    __bultos: bultos(p)
-                }))
-            );
-        });
-    }
-
-    optimizedRoutes = optimized;
-    persistGeoRoutes();
-
-    routeVisibility.clear();
-    routeSummaries.clear();
-
-    drawMap();
-
-    $('#stops').insertAdjacentHTML(
-        'beforeend',
-        `<p class="help">
-            Distribución sugerida mediante agrupación por capacidad
-            (máximo 310 bultos) y vecino más cercano por distancia
-            geográfica. Es una heurística, no garantiza el óptimo
-            matemático.
-        </p>`
-    );
-
-    const keys = [...optimized.keys()];
-
-    $('#optimizeRoutes').disabled = true;
-
+    const button = $('#optimizeRoutes');
+    button.disabled = true;
     try {
-        for (let i = 0; i < keys.length; i++) {
-            const k = keys[i];
-            const orders = optimized.get(k);
-
-            if (orders.some(p => bultos(p) > 310)) {
-                toast(
-                    'Hay un pedido que supera por sí solo los 310 bultos; ' +
-                    'requiere dividir la carga.'
+        const optimized = new Map();
+        const rejected = [];
+        for (const [date, orders] of dated) {
+            const result = await packTrips(orders);
+            rejected.push(...result.rejected.map(p => ({pedido: p, grupo: date})));
+            result.trips.forEach((trip, i) => {
+                optimized.set(
+                    `OPT-${date} · Viaje ${i + 1}`,
+                    trip.orders.map(p => ({...p, __bultos: bultos(p)}))
                 );
+            });
+        }
 
-                continue;
-            }
-
-            await requestRoadRoute(
-                k,
-                orders,
-                ROUTE_COLORS[i % ROUTE_COLORS.length]
+        // Prevalidar con el endpoint route real: no publicar sugerencias
+        // que superen 310 bultos, 200 km o 4 horas de conducción.
+        // Si OSRM no valida, se cancela toda la simulación.
+        for (const [key, orders] of optimized) {
+            const stops = groupedStops(orders);
+            const coords = [
+                `${DEPOT.lng},${DEPOT.lat}`,
+                ...stops.map(p => `${p.lng},${p.lat}`),
+                `${DEPOT.lng},${DEPOT.lat}`
+            ].join(';');
+            const response = await fetch(
+                'https://router.project-osrm.org/route/v1/driving/' +
+                coords + '?overview=false'
             );
-
-            const meta = [
-                ...document.querySelectorAll('[data-route-meta]')
-            ].find(x => x.dataset.routeMeta === k);
-
-            if (meta) {
-                meta.textContent =
-                    `${orders.length} paradas · ` +
-                    `${routeSummaries.get(k)} · ` +
-                    `${orders.reduce((s, p) => s + bultos(p), 0)} bultos`;
+            if (!response.ok) throw Error('No se pudo validar el viaje ' + key);
+            const json = await response.json();
+            const r = json.routes?.[0];
+            if (json.code !== 'Ok' || !r ||
+                orders.reduce((sum, p) => sum + bultos(p), 0) > OPT_LIMITS.maxBultos ||
+                r.distance > OPT_LIMITS.maxKm * 1000 ||
+                r.duration > OPT_LIMITS.maxMinutes * 60) {
+                throw Error('El viaje ' + key +
+                    ' excede los límites viales reales. No se publicó la sugerencia.');
             }
         }
 
-        toast(
-            'Distribución sugerida lista. Revisá la capacidad y ' +
-            'las rutas antes de asignar el camión.'
-        );
-    } catch (e) {
-        toast(e.message);
+        optimizedRoutes = optimized;
+        persistGeoRoutes(); // guarda solo preferencias locales; NO rutas en BDD.
+        routeVisibility.clear();
+        routeSummaries.clear();
+        drawMap();
+
+        $('#stops').insertAdjacentHTML('beforeend',
+            '<p class="help">Sugerencia mediante ahorros de Clarke-Wright y 2-opt ' +
+            '(CVRP multiviaje, no garantiza óptimo global). Cada viaje vuelve al ' +
+            'depósito: ≤310 bultos, ≤200 km y ≤240 min de conducción. ' +
+            'Los pendientes sin liberar quedan excluidos. Sin cambios en Supabase.' +
+            '</p>' +
+            (rejected.length ?
+                '<p class="help">Pedidos no asignables con las restricciones actuales: ' +
+                rejected.map(x => esc(String(x.pedido.numero_pedido || x.pedido.id))).join(', ') +
+                '. Requieren revisión manual.</p>' : ''));
+
+        const keys = [...optimized.keys()];
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i], orders = optimized.get(key);
+            await requestRoadRoute(key, orders, ROUTE_COLORS[i % ROUTE_COLORS.length]);
+            const meta = [...document.querySelectorAll('[data-route-meta]')]
+                .find(x => x.dataset.routeMeta === key);
+            if (meta) meta.textContent =
+                `${orders.length} pedidos · ${routeSummaries.get(key)} · ` +
+                `${orders.reduce((sum, p) => sum + bultos(p), 0)} bultos`;
+        }
+        toast(rejected.length ?
+            'Sugerencia lista con ' + rejected.length + ' pedidos no asignables. Revisá el detalle.' :
+            'Distribución multiviaje sugerida. Revisá antes de programar.');
+    } catch (error) {
+        toast('No se pudo optimizar: ' + error.message);
+        console.error('Optimización de rutas', error);
     } finally {
-        $('#optimizeRoutes').disabled = false;
+        button.disabled = false;
     }
 };
 
