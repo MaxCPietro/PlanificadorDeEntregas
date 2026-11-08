@@ -2468,7 +2468,7 @@ function renderStoredRoutes(){
   const minutes=timeCalculated?
    driveMinutes*op.trafficFactor+viajes*op.loadMinutes+
    stops.length*(op.unloadMinutes+op.waitMinutes):null;
-  const timeLabel=minutes==null?'':Math.round(minutes)+' min';
+  const timeLabel=minutes==null?'':Math.floor(Math.round(minutes)/60)+'h '+(Math.round(minutes)%60)+'m';
   const overview=r.virtual&&!r.virtualPlanned?
    (r.pendingStatus==='PENDIENTE - SIN LIBERAR'?'Pendiente de liberación':'Pendiente de programación'):
    [
