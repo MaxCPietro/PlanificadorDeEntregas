@@ -2623,9 +2623,9 @@ async function openRouteDetails(key, storedOrders = null, displayName = null) {
 function routeDisplayName(key) {
     const raw = key.startsWith('OPT-') ? key.slice(4) : key;
     const date = raw.split(' · ')[0];
-    if (date === 'SIN FECHA') return 'Sin fecha de entrega';
+    if (date === 'SIN FECHA') return ['Sin fecha de entrega', raw.match(/Jornada [0-9]+/)?.[0], raw.match(/Viaje [0-9]+/)?.[0]].filter(Boolean).join(' · ');
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-    const suffix = key.startsWith('OPT-') ? (raw.match(/Viaje \d+/)?.[0] || '') : '';
+    const suffix = key.startsWith('OPT-') ? [raw.match(/Jornada [0-9]+/)?.[0], raw.match(/Viaje [0-9]+/)?.[0]].filter(Boolean).join(' · ') : '';
     return m ? 'R-' + m[3] + m[2] + m[1].slice(2) + (suffix ? ' · ' + suffix : '') : raw;
 }
 
@@ -2980,7 +2980,7 @@ function nearestOrder(from, orders) {
 /**
  * CVRP con múltiples viajes (heurística de ahorros de Clarke-Wright
  * + búsqueda local 2-opt). Cada viaje comienza y termina en el depósito.
- * Los límites de distancia y tiempo son por viaje completo, NO por tramo.
+ * La capacidad se aplica a cada viaje; kilómetros y tiempo, a la jornada.
  * El mismo transportista puede efectuar varios viajes en una misma fecha.
  *
  * OSRM /table aporta distancias y tiempos por red vial (no Haversine).
@@ -3138,6 +3138,63 @@ async function packTrips(orders) {
     return {trips, rejected};
 }
 
+
+/** Consolida viajes en jornadas de un transportista con límites acumulados. */
+function packWorkdays(trips, fixedDate = false) {
+    const days = [], rejected = [];
+    const ordered = [...trips].sort((a,b) =>
+        Math.max(b.km / OPT_LIMITS.maxKm, b.minutes / OPT_LIMITS.maxMinutes) -
+        Math.max(a.km / OPT_LIMITS.maxKm, a.minutes / OPT_LIMITS.maxMinutes));
+    for (const trip of ordered) {
+        if (!Number.isFinite(trip.km) || !Number.isFinite(trip.minutes) ||
+            trip.bultos > OPT_LIMITS.maxBultos ||
+            trip.km > OPT_LIMITS.maxKm || trip.minutes > OPT_LIMITS.maxMinutes) {
+            rejected.push(...trip.orders); continue;
+        }
+        const fitting = days.filter(day =>
+            day.km + trip.km <= OPT_LIMITS.maxKm + 1e-8 &&
+            day.minutes + trip.minutes <= OPT_LIMITS.maxMinutes + 1e-8);
+        fitting.sort((a,b) =>
+            ((OPT_LIMITS.maxKm - a.km - trip.km) / OPT_LIMITS.maxKm +
+            (OPT_LIMITS.maxMinutes - a.minutes - trip.minutes) / OPT_LIMITS.maxMinutes) -
+            ((OPT_LIMITS.maxKm - b.km - trip.km) / OPT_LIMITS.maxKm +
+            (OPT_LIMITS.maxMinutes - b.minutes - trip.minutes) / OPT_LIMITS.maxMinutes));
+        let day = fitting[0];
+        if (!day) {
+            if (fixedDate && days.length) {rejected.push(...trip.orders);continue;}
+            day = {trips: [], km: 0, minutes: 0};
+            days.push(day);
+        }
+        day.trips.push(trip);
+        day.km += trip.km;
+        day.minutes += trip.minutes;
+    }
+    return {days,rejected};
+}
+
+/** Verifica el recorrido vial real antes de contabilizarlo en una jornada. */
+async function validateTripRoad(orders) {
+    const stops = groupedStops(orders);
+    const coords = [
+        `${DEPOT.lng},${DEPOT.lat}`,
+        ...stops.map(p => `${p.lng},${p.lat}`),
+        `${DEPOT.lng},${DEPOT.lat}`
+    ].join(';');
+    const response = await fetch('https://router.project-osrm.org/route/v1/driving/' +
+        coords + '?overview=false');
+    if (!response.ok) throw Error('OSRM no respondió durante la validación vial.');
+    const json = await response.json();
+    const route = json.routes?.[0];
+    if (json.code !== 'Ok' || !route ||
+        !Number.isFinite(route.distance) || !Number.isFinite(route.duration))
+        throw Error('Respuesta vial inválida de OSRM.');
+    if ((!route.distance || !route.duration) && stops.some(stop =>
+        Math.abs(stop.lat - DEPOT.lat) > 1e-6 ||
+        Math.abs(stop.lng - DEPOT.lng) > 1e-6))
+        throw Error('OSRM devolvió 0 km/min para un destino fuera del depósito.');
+    return {km: route.distance / 1000, minutes: route.duration / 60};
+}
+
 $('#optimizeRoutes').onclick = async () => {
     if (!map) initMap();
 
@@ -3160,71 +3217,62 @@ $('#optimizeRoutes').onclick = async () => {
     const button = $('#optimizeRoutes');
     button.disabled = true;
     try {
+
         const optimized = new Map();
         const rejected = [];
-        for (const [date, orders] of dated) {
+        const daySummaries = [];
+        for (const [group, orders] of dated) {
             const result = await packTrips(orders);
-            rejected.push(...result.rejected.map(p => ({pedido: p, grupo: date})));
-            result.trips.forEach((trip, i) => {
-                optimized.set(
-                    `OPT-${date} · Viaje ${i + 1}`,
-                    trip.orders.map(p => ({...p, __bultos: bultos(p)}))
-                );
+            rejected.push(...result.rejected.map(p => ({pedido:p,grupo:group,reason:'viaje imposible'})));
+            const validated = [];
+            for (const trip of result.trips) {
+                const road = await validateTripRoad(trip.orders);
+                validated.push({...trip,...road});
+            }
+            const fixedDate = !group.startsWith('SIN FECHA');
+            const packed = packWorkdays(validated, fixedDate);
+            rejected.push(...packed.rejected.map(p => ({pedido:p,grupo:group,
+                reason:fixedDate?'sin capacidad en la jornada de fecha fija':'fuera de límites'})));
+            packed.days.forEach((day, i) => {
+                daySummaries.push({group, shift:i+1, trips:day.trips.length,
+                    km:day.km,minutes:day.minutes});
+                day.trips.forEach((trip,j) => {
+                    const key = `OPT-${group} · Jornada ${i+1} · Viaje ${j+1}`;
+                    optimized.set(key,trip.orders.map(p=>({...p,__bultos:bultos(p)})));
+                });
             });
         }
-
-        // Prevalidar con el endpoint route real: no publicar sugerencias
-        // que superen 310 bultos, 200 km o 4 horas de conducción.
-        // Si OSRM no valida, se cancela toda la simulación.
-        for (const [key, orders] of optimized) {
-            const stops = groupedStops(orders);
-            const coords = [
-                `${DEPOT.lng},${DEPOT.lat}`,
-                ...stops.map(p => `${p.lng},${p.lat}`),
-                `${DEPOT.lng},${DEPOT.lat}`
-            ].join(';');
-            const response = await fetch(
-                'https://router.project-osrm.org/route/v1/driving/' +
-                coords + '?overview=false'
-            );
-            if (!response.ok) throw Error('No se pudo validar el viaje ' + key);
-            const json = await response.json();
-            const r = json.routes?.[0];
-            if (json.code !== 'Ok' || !r ||
-                orders.reduce((sum, p) => sum + bultos(p), 0) > OPT_LIMITS.maxBultos ||
-                r.distance > OPT_LIMITS.maxKm * 1000 ||
-                r.duration > OPT_LIMITS.maxMinutes * 60) {
-                throw Error('El viaje ' + key +
-                    ' excede los límites viales reales. No se publicó la sugerencia.');
-            }
-        }
+        if (daySummaries.some(day=>day.km>OPT_LIMITS.maxKm+1e-8 ||
+            day.minutes>OPT_LIMITS.maxMinutes+1e-8))
+            throw Error('Presupuesto de jornada excedido.');
 
         optimizedRoutes = optimized;
-        persistGeoRoutes(); // guarda solo preferencias locales; NO rutas en BDD.
+        persistGeoRoutes(); // Simulación: sin escritura en Supabase.
         routeVisibility.clear();
         routeSummaries.clear();
         drawMap();
 
         $('#stops').insertAdjacentHTML('beforeend',
-            '<p class="help">Sugerencia mediante ahorros de Clarke-Wright y 2-opt ' +
-            '(CVRP multiviaje, no garantiza óptimo global). Cada viaje vuelve al ' +
-            'depósito: ≤310 bultos, ≤200 km y ≤240 min de conducción. ' +
-            'Los pendientes sin liberar quedan excluidos. Sin cambios en Supabase.' +
-            '</p>' +
-            (rejected.length ?
-                '<p class="help">Pedidos no asignables con las restricciones actuales: ' +
-                rejected.map(x => esc(String(x.pedido.numero_pedido || x.pedido.id))).join(', ') +
-                '. Requieren revisión manual.</p>' : ''));
+            '<p class="help">CVRP multiviaje: hasta 310 bultos por viaje; ' +
+            '200 km y 240 min de conducción ACUMULADOS por jornada, ' +
+            'incluyendo cada regreso al depósito. Pedidos sin liberar excluidos.</p>' +
+            daySummaries.map(day=>'<p class="help"><b>'+esc(day.group)+
+                ' · Jornada '+day.shift+'</b>: '+day.trips+' viajes · '+
+                day.km.toFixed(1)+' km acumulados · '+Math.round(day.minutes)+
+                ' min de conducción acumulados.</p>').join('') +
+            (rejected.length ? '<p class="help">Pedidos sin asignar ('+rejected.length+
+                '): '+rejected.map(x=>'#'+esc(String(x.pedido.numero||x.pedido.id))+
+                ' ('+esc(x.reason)+')').join(', ')+'. Revisar manualmente.</p>':''));
 
         const keys = [...optimized.keys()];
-        for (let i = 0; i < keys.length; i++) {
-            const key = keys[i], orders = optimized.get(key);
-            await requestRoadRoute(key, orders, ROUTE_COLORS[i % ROUTE_COLORS.length]);
-            const meta = [...document.querySelectorAll('[data-route-meta]')]
-                .find(x => x.dataset.routeMeta === key);
-            if (meta) meta.textContent =
-                `${orders.length} pedidos · ${routeSummaries.get(key)} · ` +
-                `${orders.reduce((sum, p) => sum + bultos(p), 0)} bultos`;
+        for (let i=0;i<keys.length;i++) {
+            const key=keys[i],orders=optimized.get(key);
+            await requestRoadRoute(key,orders,ROUTE_COLORS[i % ROUTE_COLORS.length]);
+            const meta=[...document.querySelectorAll('[data-route-meta]')]
+                .find(x=>x.dataset.routeMeta===key);
+            if(meta) meta.textContent =
+                `${orders.length} pedidos · ${routeSummaries.get(key)} · `+
+                `${orders.reduce((sum,p)=>sum+bultos(p),0)} bultos`;
         }
         toast(rejected.length ?
             'Sugerencia lista con ' + rejected.length + ' pedidos no asignables. Revisá el detalle.' :
