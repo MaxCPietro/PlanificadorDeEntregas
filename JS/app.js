@@ -2158,20 +2158,66 @@ function geoFuelSummary(km) {
     return liters.toFixed(1) + ' L estimados' +
         (price > 0 ? ' · $ ' + (liters * price).toLocaleString('es-AR', {maximumFractionDigits: 0}) : ' · precio/L sin configurar');
 }
+
+const DEFAULT_OPERATIONS = Object.freeze({
+    trafficFactor: 1.20, loadMinutes: 15, unloadMinutes: 20, waitMinutes: 10
+});
+function operationalSettings() {
+    const result={};
+    for(const [key,fallback] of Object.entries(DEFAULT_OPERATIONS)) {
+        const raw=geoSettings[key];
+        const value=raw===undefined || raw===null || raw==='' ? fallback:Number(raw);
+        if(!Number.isFinite(value) || (key==='trafficFactor'
+            ? value<1 || value>3 : value<0 || value>240))
+            throw Error('Configuración operativa inválida: '+key);
+        result[key]=value;
+    }
+    return result;
+}
 function geoSetup() {
  const panel=document.getElementById('geoSettingsPanel');
- if(!panel || panel.dataset.ready) return;
+ if(!panel || panel.dataset.ready)return;
  panel.dataset.ready='1';
- panel.innerHTML='<label>L/100 km <input id="geoConsumption" type="number" min="0.1" step="0.1" style="width:65px"></label> <label>Combustible $/L <input id="geoFuelPrice" type="number" min="0" step="0.01" style="width:85px" placeholder="Precio"></label>';
- panel.querySelector('#geoConsumption').value=geoSettings.consumption||12;
- panel.querySelector('#geoFuelPrice').value=geoSettings.fuelPrice||'';
- panel.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{
-  const consumption=Number(panel.querySelector('#geoConsumption').value);
-  const fuelPrice=panel.querySelector('#geoFuelPrice').value;
-  if(!(consumption>0) || (fuelPrice!=='' && Number(fuelPrice)<0)){toast('Revisá los valores');return;}
-  Object.assign(geoSettings,{consumption,fuelPrice});
-  localStorage.setItem('waiparaGeoSettings',JSON.stringify(geoSettings));
-  toast('Configuración guardada localmente');
+ panel.innerHTML='<label>L/100 km <input id="geoConsumption" type="number" min="0.1" step="0.1" style="width:65px"></label> '+
+ '<label>Combustible $/L <input id="geoFuelPrice" type="number" min="0" step="0.01" style="width:85px"></label> '+
+ '<details class="geo-operational-settings"><summary>⏱ Tiempos operativos</summary>'+
+ '<div class="geo-operational-fields">'+
+ '<label>Factor tránsito × <input id="geoTrafficFactor" type="number" min="1" max="3" step="0.05"></label>'+
+ '<label>Carga por viaje (min) <input id="geoLoadMinutes" type="number" min="0" max="240" step="1"></label>'+
+ '<label>Descarga por parada (min) <input id="geoUnloadMinutes" type="number" min="0" max="240" step="1"></label>'+
+ '<label>Espera por parada (min) <input id="geoWaitMinutes" type="number" min="0" max="240" step="1"></label></div>'+
+ '<small>Tiempo operativo = conducción OSRM × factor + carga + descarga + espera. Valores por dispositivo.</small></details>';
+ const ids={consumption:'geoConsumption',fuelPrice:'geoFuelPrice',
+     trafficFactor:'geoTrafficFactor',loadMinutes:'geoLoadMinutes',
+     unloadMinutes:'geoUnloadMinutes',waitMinutes:'geoWaitMinutes'};
+ Object.entries(ids).forEach(([key,id])=>{
+     panel.querySelector('#'+id).value=key in DEFAULT_OPERATIONS
+         ? (geoSettings[key]??DEFAULT_OPERATIONS[key])
+         : (geoSettings[key]??(key==='consumption'?12:''));
+ });
+ panel.querySelectorAll('input').forEach(el=>el.addEventListener('change',()=>{
+     const next={};
+     for(const [key,id] of Object.entries(ids)){
+         const input=panel.querySelector('#'+id);
+         const blank=input.value==='';
+         const value=key==='fuelPrice'&&blank?'':Number(input.value);
+         const invalid=(!blank&&!Number.isFinite(value))||
+             (blank&&key!=='fuelPrice')||
+             (key==='consumption'&&!(value>0))||
+             (key==='fuelPrice'&&value!==''&&value<0)||
+             (key==='trafficFactor'&&(value<1||value>3))||
+             (['loadMinutes','unloadMinutes','waitMinutes'].includes(key)&&
+                 (value<0||value>240));
+         if(invalid){toast('Configuración inválida: '+key);input.focus();return;}
+         next[key]=value;
+     }
+     Object.assign(geoSettings,next);
+     localStorage.setItem('waiparaGeoSettings',JSON.stringify(geoSettings));
+     optimizedRoutes=null;
+     optimizedDayTrips.clear();
+     routeSummaries.clear();
+     drawMap();
+     toast('Configuración guardada. Volvé a optimizar.');
  }));
 }
 
@@ -3026,6 +3072,22 @@ function nearestOrder(from, orders) {
  * configurados en el sistema. Nunca se infiere una duración de descarga.
  * La optimización es una simulación: no se escribe en Supabase.
  */
+
+function countDistinctStops(orders) {
+    return new Set(orders.map(p=>
+        Number(p.latitud).toFixed(5)+','+Number(p.longitud).toFixed(5))).size;
+}
+function operationBreakdown(osrmMinutes, stops, settings=operationalSettings()) {
+    const traffic=osrmMinutes*settings.trafficFactor;
+    const load=settings.loadMinutes;
+    const unload=stops*settings.unloadMinutes;
+    const wait=stops*settings.waitMinutes;
+    return {osrm:osrmMinutes,traffic,load,unload,wait,total:traffic+load+unload+wait};
+}
+function tripOperatingTimes(orders, km, osrmMinutes) {
+    const timing=operationBreakdown(osrmMinutes,countDistinctStops(orders));
+    return {km,driveMinutes:osrmMinutes,operationalMinutes:timing.total,timing};
+}
 const OPT_LIMITS = Object.freeze({
     maxBultos: 310,
     maxKm: 200,
@@ -3069,15 +3131,16 @@ function routeMeasures(indices, matrix) {
     return {meters, seconds};
 }
 
-function routeFits(indices, matrix, loads) {
+function routeFits(indices, matrix, loads, orders) {
     const units = indices.reduce((sum, i) => sum + loads[i], 0);
     if (units > OPT_LIMITS.maxBultos) return false;
     const {meters, seconds} = routeMeasures(indices, matrix);
-    return meters <= OPT_LIMITS.maxKm * 1000 &&
-        seconds <= OPT_LIMITS.maxMinutes * 60;
+    const minutes=operationBreakdown(seconds/60,
+        countDistinctStops(indices.map(i=>orders[i]))).total;
+    return meters <= OPT_LIMITS.maxKm * 1000 && minutes <= OPT_LIMITS.maxMinutes;
 }
 
-function improveRoute(indices, matrix, loads) {
+function improveRoute(indices, matrix, loads, orders) {
     let best = indices.slice();
     let changed = true;
     while (changed) {
@@ -3090,7 +3153,7 @@ function improveRoute(indices, matrix, loads) {
                     ...best.slice(i, j + 1).reverse(),
                     ...best.slice(j + 1)
                 ];
-                if (routeFits(candidate, matrix, loads) &&
+                if (routeFits(candidate, matrix, loads, orders) &&
                     routeMeasures(candidate, matrix).meters + 0.01 < current) {
                     best = candidate;
                     changed = true;
@@ -3114,7 +3177,7 @@ async function packTrips(orders) {
     // Cada pedido arranca como un viaje individual: ningún viaje
     // sobrecargado ni fuera de límites puede formar parte de la solución.
     for (let i = 0; i < valid.length; i++) {
-        if (routeFits([i], matrix, loads)) routes.push([i]);
+        if (routeFits([i], matrix, loads, valid)) routes.push([i]);
         else rejected.push(valid[i]);
     }
 
@@ -3146,7 +3209,7 @@ async function packTrips(orders) {
             for (const bb of [b, b.slice().reverse()]) {
                 if (aa[aa.length - 1] !== i || bb[0] !== j) continue;
                 const joined = [...aa, ...bb];
-                if (!routeFits(joined, matrix, loads)) continue;
+                if (!routeFits(joined, matrix, loads, valid)) continue;
                 const meters = routeMeasures(joined, matrix).meters;
                 if (meters < bestMeters) {best = joined; bestMeters = meters;}
             }
@@ -3155,7 +3218,7 @@ async function packTrips(orders) {
             for (const bb of [a, a.slice().reverse()]) {
                 if (aa[aa.length - 1] !== j || bb[0] !== i) continue;
                 const joined = [...aa, ...bb];
-                if (!routeFits(joined, matrix, loads)) continue;
+                if (!routeFits(joined, matrix, loads, valid)) continue;
                 const meters = routeMeasures(joined, matrix).meters;
                 if (meters < bestMeters) {best = joined; bestMeters = meters;}
             }
@@ -3164,13 +3227,14 @@ async function packTrips(orders) {
     }
 
     const trips = routes.map(indices => {
-        const improved = improveRoute(indices, matrix, loads);
+        const improved = improveRoute(indices, matrix, loads, valid);
         const measures = routeMeasures(improved, matrix);
         return {
             orders: improved.map(i => valid[i]),
             bultos: improved.reduce((sum, i) => sum + loads[i], 0),
             km: measures.meters / 1000,
-            minutes: measures.seconds / 60
+            minutes: measures.seconds / 60,
+            ...tripOperatingTimes(improved.map(i=>valid[i]),measures.meters/1000,measures.seconds/60)
         };
     }).sort((a, b) => b.bultos - a.bultos);
     return {trips, rejected};
