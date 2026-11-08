@@ -2458,6 +2458,28 @@ function renderStoredRoutes(){
    }
    cargaActual+=carga;
   }
+  // El resumen persistido contiene minutos OSRM; no siempre tiempo operativo.
+  // Para no presentar conducción como trabajo, aplicar el modelo operativo
+  // sólo cuando hay tiempo vial medido y todos los pedidos tienen ubicación.
+  const timeMatch=summary.match(/(\\d+(?:[.,]\\d+)?)\\s*min\\b/i);
+  const driveMinutes=timeMatch?parseDecimal(timeMatch[1]):null;
+  const allLocated=includedOrders.every(p=>p.latitud!=null&&p.longitud!=null&&
+   Number.isFinite(+p.latitud)&&Number.isFinite(+p.longitud));
+  const timeCalculated=driveMinutes!=null&&allLocated&&viajes!=null&&viajes>0;
+  const op=operationalSettings();
+  const minutes=timeCalculated?
+   driveMinutes*op.trafficFactor+viajes*op.loadMinutes+
+   stops.length*(op.unloadMinutes+op.waitMinutes):null;
+  const timeLabel=minutes==null?'':Math.round(minutes)+' min';
+  const overview=r.virtual&&!r.virtualPlanned?
+   (r.pendingStatus==='PENDIENTE - SIN LIBERAR'?'Pendiente de liberación':'Pendiente de programación'):
+   [
+    viajes==null?'Capacidad inválida':viajes+' viaje'+(viajes===1?'':'s'),
+    stops.length+' parada'+(stops.length===1?'':'s'),
+    totalBultos+' bultos',
+    km==null?'Distancia pendiente':formatNumber(km)+' km',
+    minutes==null?'Tiempo operativo pendiente':Math.round(minutes)+' min operativos estimados'
+   ].join(' · ');
   const numbers=orders.map(p=>{
    const client=nameOf('clientes',p.cliente_id);
    const tooltip='Pedido #'+p.numero+' - '+client;
@@ -2465,12 +2487,14 @@ function renderStoredRoutes(){
   }).join(', ');
   const cells=[
    r.virtual?'<strong title="'+(r.virtualPlanned?'Planificada, pendiente de cálculo vial':'Sin programar')+'">'+esc(routeName)+'</strong>':'<button type="button" class="geo-route-link" data-stored-route="'+index+'" title="Ver detalle de '+esc(routeName)+'">'+esc(routeName)+'</button>',
-   esc(geoDisplayDate(r.fecha)),esc(r.transportista||'—'),String(stops.length),
-   viajes==null?'—':String(viajes),numbers,String(totalBultos),'<span class="status-badge status-'+status.replaceAll(' ','-')+'">'+esc(label)+'</span>',formatNumber(km),formatNumber(liters),
+   esc(geoDisplayDate(r.fecha)),esc(r.transportista||'—'),
+   viajes==null?'—':String(viajes),String(stops.length),numbers,
+   '<span class="status-badge status-'+status.replaceAll(' ','-')+'">'+esc(label)+'</span>',
+   String(totalBultos),formatNumber(km),timeLabel,formatNumber(liters),
    cost==null?'':'$ '+cost.toLocaleString('es-AR',{maximumFractionDigits:0}),
-   esc(summary)
+   esc(overview)
   ];
-  return {ruta:routeName,fecha:r.fecha||'',transportista:r.transportista||'',paradas:stops.length,viajes,pedidos:orders.length,bultos:totalBultos,estado:label,km,litros:liters,costo:cost,resumen:summary,status,html:'<tr>'+cells.map(c=>'<td>'+c+'</td>').join('')+'</tr>',route:r,orders};
+  return {ruta:routeName,fecha:r.fecha||'',transportista:r.transportista||'',paradas:stops.length,viajes,pedidos:orders.length,bultos:totalBultos,estado:label,km,tiempo:minutes,litros:liters,costo:cost,resumen:overview,status,html:'<tr>'+cells.map(c=>'<td>'+c+'</td>').join('')+'</tr>',route:r,orders};
  });
  const filteredRecords=records.filter(r=>selectedStatuses.has(r.status));
  filteredRecords.sort((x,y)=>{
@@ -2482,7 +2506,7 @@ function renderStoredRoutes(){
  const pageCount=Math.max(1,Math.ceil(filteredRecords.length/GEO_ROUTES_PAGE_SIZE));
  geoRoutesPage=Math.min(Math.max(1,geoRoutesPage),pageCount);
  const pageRecords=filteredRecords.slice((geoRoutesPage-1)*GEO_ROUTES_PAGE_SIZE,geoRoutesPage*GEO_ROUTES_PAGE_SIZE);
- const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['paradas','Paradas'],['viajes','Viajes'],['pedidos','# Pedidos'],['bultos','Σ Bultos'],['estado','Estado'],['km','Σ Km Aprox'],['litros','Σ Litros Aprox'],['costo','$ Aprox'],['resumen','Resumen']];
+ const columns=[['ruta','Ruta'],['fecha','Fecha'],['transportista','Transportista'],['viajes','# Viajes'],['paradas','# Paradas'],['pedidos','# Pedidos'],['estado','Estado'],['bultos','Σ Bultos'],['km','Σ Km Apx'],['tiempo','Σ Tiempo'],['litros','Σ Lts Apx'],['costo','$ Apx'],['resumen','Resumen']];
  const headers=columns.map(([id,label])=>'<th><button type="button" class="geo-sort" data-geo-sort="'+id+'" aria-label="Ordenar por '+label+'">'+label+' '+(sort.column===id?(sort.asc?'▲':'▼'):'↕')+'</button></th>').join('');
  const statusOptions=[['PENDIENTE - LIBERADO','Pendiente - Liberado'],['PENDIENTE - SIN LIBERAR','Pendiente - Sin Liberar'],['PROGRAMADO','Planificado'],['EN REPARTO','En reparto'],['ENTREGADO','Entregado']];
  const filterHtml='<div class="geo-route-filter"><span>Estados:</span>'+statusOptions.map(([id,label])=>'<label class="geo-state-choice"><input type="checkbox" data-geo-status="'+id+'" '+(selectedStatuses.has(id)?'checked':'')+'> '+label+'</label>').join('')+'</div>';
