@@ -2480,7 +2480,7 @@ function renderStoredRoutes(){
   const parseDecimal=v=>v==null?null:Number(v.replace(',','.'));
   const km=r.storedTrips?r.totalKm:(kmMatch?parseDecimal(kmMatch[1]):null);
   const liters=r.storedTrips?r.totalLiters:(litersMatch?parseDecimal(litersMatch[1]):null);
-  const cost=costMatch?Number(costMatch[1].replace(/\./g,'').replace(',','.')):null;
+  const cost=r.storedTrips?r.totalCost:(costMatch?Number(costMatch[1].replace(/\./g,'').replace(',','.')):null);
   const totalBultos=orders.filter(p=>p.__included).reduce((sum,p)=>sum+bultos(p),0);
   // Viajes estimados por capacidad, preservando el orden de los pedidos.
   // No confundir con paradas: una misma jornada puede requerir varios retornos.
