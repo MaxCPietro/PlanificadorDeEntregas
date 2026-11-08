@@ -2728,7 +2728,10 @@ function routeCard(key, color, orders, details = '') {
     const itinerary = dayTrips ? dayTrips.map((trip,i)=>
         '<div class="help" style="margin-top:9px;font-weight:700">Viaje '+(i+1)+
         ' · '+trip.bultos+' bultos · '+trip.km.toFixed(1)+' km · '+
-        Math.round(trip.minutes)+' min · Depósito → Clientes → Depósito</div>'+
+        Math.round(trip.operationalMinutes)+' min OPERATIVOS ('+
+        Math.round(trip.driveMinutes)+' min OSRM ×'+operationalSettings().trafficFactor+
+        ' + '+trip.timing.load+' carga + '+trip.timing.unload+
+        ' descarga + '+trip.timing.wait+' espera) · Depósito → Clientes → Depósito</div>'+
         orderRows(trip.orders,i)).join('') : orderRows(orders,0);
 
     return `
@@ -2903,8 +2906,10 @@ async function requestRoadRoute(key, orders, color) {
             routeSummaries.delete(syntheticKey);
             km+=trip.km;minutes+=trip.minutes;
         }
+        const operating=trips.reduce((sum,t)=>sum+t.operationalMinutes,0);
         routeSummaries.set(key,trips.length+' viajes · '+km.toFixed(1)+
-            ' km acumulados · '+Math.round(minutes)+' min acumulados · '+geoFuelSummary(km));
+            ' km acumulados · '+Math.round(operating)+' min OPERATIVOS ('+
+            Math.round(minutes)+' min OSRM) · '+geoFuelSummary(km));
         return;
     }
 
@@ -3259,35 +3264,29 @@ function compareTripPriority(a,b) {
  * Cada viaje comienza y termina en el depósito.
  */
 function packWorkdays(trips, fixedDate = false) {
-    const days=[], rejected=[];
-    // Con fecha fija, FIFO determina qué pedidos caben en esa fecha.
-    // Sin fecha, primero combinamos recorridos cortos en días compactos;
-    // luego las jornadas se ORDENAN por antigüedad para priorizar FIFO.
-    const ordered=[...trips].sort(fixedDate ? compareTripPriority :
-        (a,b)=>a.km-b.km || compareTripPriority(a,b));
-    for (const trip of ordered) {
-        if (!Number.isFinite(trip.km) || !Number.isFinite(trip.minutes) ||
-            trip.bultos > OPT_LIMITS.maxBultos || trip.km > OPT_LIMITS.maxKm ||
-            trip.minutes > OPT_LIMITS.maxMinutes) {
+    const days=[],rejected=[];
+    const ordered=[...trips].sort(fixedDate?compareTripPriority:
+        (a,b)=>a.km-b.km||compareTripPriority(a,b));
+    for(const trip of ordered){
+        if(!Number.isFinite(trip.km)||!Number.isFinite(trip.operationalMinutes)||
+            trip.bultos>OPT_LIMITS.maxBultos||trip.km>OPT_LIMITS.maxKm||
+            trip.operationalMinutes>OPT_LIMITS.maxMinutes){
             rejected.push(...trip.orders);
             continue;
         }
-        let day = days.find(d => d.km+trip.km <= OPT_LIMITS.maxKm+1e-8 &&
-            d.minutes+trip.minutes <= OPT_LIMITS.maxMinutes+1e-8);
-        if (!day) {
-            if (fixedDate && days.length) {
-                rejected.push(...trip.orders);
-                continue;
-            }
-            day = {trips:[],km:0,minutes:0};
+        let day=days.find(d=>d.km+trip.km<=OPT_LIMITS.maxKm+1e-8&&
+            d.operationalMinutes+trip.operationalMinutes<=OPT_LIMITS.maxMinutes+1e-8);
+        if(!day){
+            if(fixedDate&&days.length){rejected.push(...trip.orders);continue;}
+            day={trips:[],km:0,minutes:0,operationalMinutes:0};
             days.push(day);
         }
         day.trips.push(trip);
         day.km+=trip.km;
-        day.minutes+=trip.minutes;
+        day.minutes+=trip.driveMinutes;
+        day.operationalMinutes+=trip.operationalMinutes;
     }
     days.forEach(day=>day.trips.sort(compareTripPriority));
-    // La jornada más antigua se sugiere primero, incluso si se armó al final.
     days.sort((a,b)=>compareTripPriority(a.trips[0],b.trips[0]));
     return {days,rejected};
 }
@@ -3389,7 +3388,8 @@ $('#optimizeRoutes').onclick = async () => {
             const validated=[];
             for(const trip of result.trips) {
                 const road=await validateTripRoad(trip.orders);
-                validated.push({...trip,...road});
+                validated.push({...trip,...road,
+                    ...tripOperatingTimes(trip.orders,road.km,road.minutes)});
             }
             const fixedDate=!group.startsWith('SIN FECHA');
             const packed=packWorkdays(validated,fixedDate);
@@ -3412,11 +3412,12 @@ $('#optimizeRoutes').onclick = async () => {
                 optimized.set(key,trips.flatMap(t=>t.orders));
                 groupedDays.set(key,trips);
                 daySummaries.push({key,km:day.km,minutes:day.minutes,
+                    operationalMinutes:day.operationalMinutes,
                     trips:trips.length,fecha:suggestedDate});
             }
         }
         if(daySummaries.some(d=>d.km>OPT_LIMITS.maxKm+1e-8 ||
-            d.minutes>OPT_LIMITS.maxMinutes+1e-8))
+            d.operationalMinutes>OPT_LIMITS.maxMinutes+1e-8))
             throw Error('Se excedieron los límites de una jornada.');
 
         optimizedRoutes=optimized;
@@ -3430,7 +3431,7 @@ $('#optimizeRoutes').onclick = async () => {
             '<p class="help"><b>Fechas sugeridas (no programadas):</b> '+
             'FIFO por fecha de pedido, distancia vial y carga. '+
             'Viajes de hasta 310 bultos; jornada de hasta 200 km y '+
-            '240 min de conducción, sumando cada regreso al depósito. '+
+            '240 min OPERATIVOS, sumando tránsito, cargas, descargas, esperas y regresos. '+
             'Se omiten sábados, domingos y feriados nacionales conocidos.</p>'+
             (rejected.length?'<p class="help">Pedidos no asignables ('+
                 rejected.length+'): '+rejected.map(x=>'#'+
