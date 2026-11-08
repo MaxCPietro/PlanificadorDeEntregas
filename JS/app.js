@@ -2239,26 +2239,56 @@ const excludedGeoOrders=new Set();
 let dbGeoRoutes=[];
 async function loadDbGeoRoutes(){
  if(!sb)return;
- const [routes,links]=await Promise.all([
+ const [routes,links,journeys,journeyLinks]=await Promise.all([
   sb.from('rutas').select('*').order('fecha',{ascending:false}).limit(3000),
-  sb.from('ruta_pedidos').select('*').limit(10000)
+  sb.from('ruta_pedidos').select('*').limit(10000),
+  sb.from('viajes').select('*').limit(10000),
+  sb.from('viaje_pedidos').select('*').limit(20000)
  ]);
- if(routes.error)throw routes.error;
- if(links.error)throw links.error;
- const byId=new Map();
+ for(const result of [routes,links,journeys,journeyLinks])if(result.error)throw result.error;
+ const byId=new Map(),byJourney=new Map(),journeysByRoute=new Map();
  for(const link of links.data||[]){
   if(!byId.has(link.ruta_id))byId.set(link.ruta_id,[]);
   byId.get(link.ruta_id).push(link);
  }
- dbGeoRoutes=(routes.data||[]).map(r=>{
-  const km=r.distancia_km==null?null:Number(r.distancia_km)+Number(r.retorno_km||0);
-  const min=r.duracion_min==null?null:Number(r.duracion_min)+Number(r.retorno_min||0);
-  const liters=km==null?null:km*Number(r.consumo_l_100km||12)/100;
-  const cost=liters==null||r.precio_litro==null?null:liters*Number(r.precio_litro);
-  const resumen=km==null?'':km.toFixed(1)+' km ida y vuelta · '+Math.round(min||0)+' min · '+liters.toFixed(1)+' L estimados'+(cost==null?' · precio/L sin configurar':' · $ '+cost.toLocaleString('es-AR',{maximumFractionDigits:0}));
-  return {...r,key:r.fecha+' · '+r.transportista,
-   pedidos:(byId.get(r.id)||[]).sort((x,y)=>x.orden-y.orden),resumen,driveMinutes:min};
- });
+ for(const link of journeyLinks.data||[]){
+  if(!byJourney.has(link.viaje_id))byJourney.set(link.viaje_id,[]);
+  byJourney.get(link.viaje_id).push(link);
+ }
+ for(const journey of journeys.data||[]){
+  if(!journeysByRoute.has(journey.ruta_id))journeysByRoute.set(journey.ruta_id,[]);
+  journeysByRoute.get(journey.ruta_id).push(journey);
+ }
+ const normalized=[];
+ for(const r of routes.data||[]){
+  const sub=journeysByRoute.get(r.id);
+  if(sub?.length){
+   for(const j of sub.sort((a,b)=>a.numero-b.numero)){
+    const km=j.distancia_km==null?null:Number(j.distancia_km)+Number(j.retorno_km||0);
+    const min=j.duracion_min==null?null:Number(j.duracion_min)+Number(j.retorno_min||0);
+    const liters=km==null?null:km*Number(r.consumo_l_100km||12)/100;
+    const cost=liters==null||r.precio_litro==null?null:liters*Number(r.precio_litro);
+    normalized.push({...r,id:j.id,viaje:j.numero,
+     distancia_km:j.distancia_km,retorno_km:j.retorno_km,
+     duracion_min:j.duracion_min,retorno_min:j.retorno_min,
+     geometria:j.geometria,
+     key:r.fecha+' · '+r.transportista,
+     pedidos:(byJourney.get(j.id)||[]).sort((a,b)=>a.orden-b.orden),
+     resumen:km==null?'':km.toFixed(1)+' km · '+Math.round(min||0)+' min',
+     driveMinutes:min});
+   }
+  }else{
+   const km=r.distancia_km==null?null:Number(r.distancia_km)+Number(r.retorno_km||0);
+   const min=r.duracion_min==null?null:Number(r.duracion_min)+Number(r.retorno_min||0);
+   const liters=km==null?null:km*Number(r.consumo_l_100km||12)/100;
+   const cost=liters==null||r.precio_litro==null?null:liters*Number(r.precio_litro);
+   normalized.push({...r,key:r.fecha+' · '+r.transportista,
+    pedidos:(byId.get(r.id)||[]).sort((a,b)=>a.orden-b.orden),
+    resumen:km==null?'':km.toFixed(1)+' km · '+Math.round(min||0)+' min',
+    driveMinutes:min});
+  }
+ }
+ dbGeoRoutes=normalized;
  renderStoredRoutes();
 }
 async function saveRealTrips(key, orders, trips) {
