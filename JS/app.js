@@ -2257,7 +2257,7 @@ async function loadDbGeoRoutes(){
   const cost=liters==null||r.precio_litro==null?null:liters*Number(r.precio_litro);
   const resumen=km==null?'':km.toFixed(1)+' km ida y vuelta · '+Math.round(min||0)+' min · '+liters.toFixed(1)+' L estimados'+(cost==null?' · precio/L sin configurar':' · $ '+cost.toLocaleString('es-AR',{maximumFractionDigits:0}));
   return {...r,key:r.fecha+' · '+r.transportista,
-   pedidos:(byId.get(r.id)||[]).sort((x,y)=>x.orden-y.orden),resumen};
+   pedidos:(byId.get(r.id)||[]).sort((x,y)=>x.orden-y.orden),resumen,driveMinutes:min};
  });
  renderStoredRoutes();
 }
@@ -2458,11 +2458,9 @@ function renderStoredRoutes(){
    }
    cargaActual+=carga;
   }
-  // El resumen persistido contiene minutos OSRM; no siempre tiempo operativo.
-  // Para no presentar conducción como trabajo, aplicar el modelo operativo
-  // sólo cuando hay tiempo vial medido y todos los pedidos tienen ubicación.
-  const timeMatch=summary.match(/(\\d+(?:[.,]\\d+)?)\\s*min\\b/i);
-  const driveMinutes=timeMatch?parseDecimal(timeMatch[1]):null;
+  // Leer duración vial estructurada desde Supabase, no desde el texto de resumen.
+  const driveMinutes=r.virtual?null:
+   (Number.isFinite(r.driveMinutes)&&r.driveMinutes>=0?r.driveMinutes:null);
   const allLocated=includedOrders.every(p=>p.latitud!=null&&p.longitud!=null&&
    Number.isFinite(+p.latitud)&&Number.isFinite(+p.longitud));
   const timeCalculated=driveMinutes!=null&&allLocated&&viajes!=null&&viajes>0;
