@@ -2792,7 +2792,7 @@ async function calculateSingleRoute(key, button) {
         const keys = [...groups.keys()];
         await requestRoadRoute(key, orders, ROUTE_COLORS[keys.indexOf(key) % ROUTE_COLORS.length]);
         const meta = [...document.querySelectorAll('[data-route-meta]')].find(x => x.dataset.routeMeta === key);
-        if (meta) meta.textContent = routeSummaries.get(key);
+        if (meta) meta.textContent = formatGeoRouteMeta(routeSummaries.get(key));
         toast('Ruta ' + routeDisplayName(key) + ' calculada');
     } catch(e) { toast(e.message); }
     finally { button.disabled = false; }
@@ -3114,7 +3114,7 @@ $('#route').onclick = async () => {
 
             if (meta) {
                 meta.textContent =
-                    `${routeSummaries.get(k)}`;
+                    formatGeoRouteMeta(routeSummaries.get(k));
             }
         }
 
@@ -3545,8 +3545,7 @@ $('#optimizeRoutes').onclick = async () => {
             await requestRoadRoute(key,orders,ROUTE_COLORS[i % ROUTE_COLORS.length]);
             const meta=[...document.querySelectorAll('[data-route-meta]')]
                 .find(x=>x.dataset.routeMeta===key);
-            if(meta)meta.textContent=routeSummaries.get(key)+
-                ' · '+orders.length+' pedidos';
+            if(meta)meta.textContent=formatGeoRouteMeta(routeSummaries.get(key));
         }
         toast(rejected.length ?
             'Sugerencia lista con ' + rejected.length + ' pedidos no asignables. Revisá el detalle.' :
