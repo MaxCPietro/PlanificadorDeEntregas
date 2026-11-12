@@ -1140,7 +1140,7 @@ const fields = {
  */
 const geoLookupCache = new Map();
 let lastGeoLookup = 0;
-const geoForms = {order:{source:null,verified:false,signature:''},client:{source:null,verified:false,signature:''}};
+const geoForms = {order:{source:null,verified:false,signature:'',dirty:false},client:{source:null,verified:false,signature:'',dirty:false}};
 function geoNormalize(value) {
  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
   .toLowerCase().replace(/\b(av\.?|avenida)\b/g,'avenida')
@@ -1217,9 +1217,10 @@ function geoSetStatus(kind,source,verified,address,locality,province) {
  const state=geoForms[kind];
  state.source=source;state.verified=verified;
  state.signature=geoSignature(address,locality,province);
+ state.dirty=false;
 }
 function geoInvalidate(kind,clearCoordinates=false) {
- geoForms[kind]={source:null,verified:false,signature:''};
+ geoForms[kind]={source:null,verified:false,signature:'',dirty:true};
  if(clearCoordinates){
   const inputs=kind==='order'?
    [document.querySelector('#oLat'),document.querySelector('#oLng')]:
@@ -1259,6 +1260,7 @@ async function geoPresentCandidates(kind,fields) {
     }
     lat.value=candidate.lat;lng.value=candidate.lon;
     geoSetStatus(kind,'nominatim',false,address.value,locality.value,province.value);
+    geoForms[kind].dirty=true;
     status.textContent=candidate.check.precise?
      'Punto seleccionado: verificá en Google Maps y pulsá Confirmar coordenadas.':
      'Altura no verificada: comprobá visualmente en Google Maps y pulsá Confirmar coordenadas.';
@@ -1284,6 +1286,15 @@ function geoConfirmManual(kind,fields) {
   fields.address.value,fields.locality.value,fields.province.value);
  fields.status.textContent='Coordenadas confirmadas manualmente. Verificá el punto en Google Maps.';
  fields.host.replaceChildren();
+}
+function geoCanSave(kind,fields) {
+ const state=geoForms[kind];
+ const hasCoords=String(fields.lat.value||'').trim()||String(fields.lng.value||'').trim();
+ if(hasCoords&&state.dirty&&!state.verified){
+  fields.status.textContent='Confirmá las coordenadas antes de guardar, o borrá ambos campos.';
+  return false;
+ }
+ return true;
 }
 function geoMetaForSave(kind,fields) {
  const state=geoForms[kind];
@@ -1398,6 +1409,7 @@ $('#entityForm').onsubmit = async e => {
         const v=k=>$('#entityFields [data-field="'+k+'"]');
         const fieldsGeo={address:v('direccion_entrega').value?v('direccion_entrega'):v('direccion'),
             locality:v('localidad'),province:v('provincia'),lat:v('latitud'),lng:v('longitud')};
+        if(!geoCanSave('client',{...fieldsGeo,status:$('#entityGeoMsg')}))return;
         Object.assign(data,geoMetaForSave('client',fieldsGeo));
     }
 
@@ -2120,6 +2132,8 @@ $('#orderForm').onsubmit = async e => {
         toast('Elegí un cliente válido');
         return;
     }
+
+    if(!geoCanSave('order',orderGeoFields()))return;
 
     const selectedStatus = $('#oStatus').value;
     const chosenDate = selectedStatus === 'PENDIENTE - SIN LIBERAR' ? null : ($('#oDelivery').value || null);
