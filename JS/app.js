@@ -1218,8 +1218,15 @@ function geoSetStatus(kind,source,verified,address,locality,province) {
  state.source=source;state.verified=verified;
  state.signature=geoSignature(address,locality,province);
 }
-function geoInvalidate(kind) {
+function geoInvalidate(kind,clearCoordinates=false) {
  geoForms[kind]={source:null,verified:false,signature:''};
+ if(clearCoordinates){
+  const inputs=kind==='order'?
+   [document.querySelector('#oLat'),document.querySelector('#oLng')]:
+   [document.querySelector('#entityFields [data-field="latitud"]'),
+    document.querySelector('#entityFields [data-field="longitud"]')];
+  inputs.forEach(input=>{if(input)input.value='';});
+ }
  const host=document.querySelector(kind==='order'?'#orderGeoCandidates':'#clientGeoCandidates');
  if(host)host.replaceChildren();
  const status=document.querySelector(kind==='order'?'#geoMsg':'#entityGeoMsg');
@@ -1251,10 +1258,10 @@ async function geoPresentCandidates(kind,fields) {
      status.textContent='La dirección cambió. Repetí la búsqueda.';host.replaceChildren();return;
     }
     lat.value=candidate.lat;lng.value=candidate.lon;
-    geoSetStatus(kind,'nominatim',true,address.value,locality.value,province.value);
+    geoSetStatus(kind,'nominatim',false,address.value,locality.value,province.value);
     status.textContent=candidate.check.precise?
-     'Punto seleccionado. Verificá la entrada en el mapa antes de guardar.':
-     'Punto seleccionado sin altura exacta. Confirmá visualmente en el mapa antes de guardar.';
+     'Punto seleccionado: verificá en Google Maps y pulsá Confirmar coordenadas.':
+     'Altura no verificada: comprobá visualmente en Google Maps y pulsá Confirmar coordenadas.';
     host.replaceChildren();
    };
    row.append(summary,choose);host.append(row);
@@ -1263,7 +1270,7 @@ async function geoPresentCandidates(kind,fields) {
 }
 function geoBindInputs(kind,fields) {
  const {address,locality,province,lat,lng}=fields;
- [address,locality,province].forEach(input=>input.addEventListener('input',()=>geoInvalidate(kind)));
+ [address,locality,province].forEach(input=>input.addEventListener('input',()=>geoInvalidate(kind,true)));
  [lat,lng].forEach(input=>input.addEventListener('input',()=>{
   geoInvalidate(kind);
   if(geoValidPoint(lat.value,lng.value))fields.status.textContent='Coordenadas editadas. Confirmalas manualmente.';
@@ -1273,7 +1280,8 @@ function geoConfirmManual(kind,fields) {
  if(!geoValidPoint(fields.lat.value,fields.lng.value)){
   fields.status.textContent='Ingresá latitud y longitud válidas dentro de Argentina.';return;
  }
- geoSetStatus(kind,'manual',true,fields.address.value,fields.locality.value,fields.province.value);
+ geoSetStatus(kind,geoForms[kind].source==='nominatim'?'nominatim':'manual',true,
+  fields.address.value,fields.locality.value,fields.province.value);
  fields.status.textContent='Coordenadas confirmadas manualmente. Verificá el punto en Google Maps.';
  fields.host.replaceChildren();
 }
@@ -1352,7 +1360,7 @@ function editEntity(type, id = null) {
         geoForms.client={source:row.geo_fuente||null,verified:row.geo_verificada===true,
             signature:geoSignature(fieldsGeo.address.value,fieldsGeo.locality.value,fieldsGeo.province.value)};
         [v('direccion'),v('direccion_entrega'),v('localidad'),v('provincia')].forEach(input=>
-            input.addEventListener('input',()=>geoInvalidate('client')));
+            input.addEventListener('input',()=>geoInvalidate('client',true)));
         [fieldsGeo.lat,fieldsGeo.lng].forEach(input=>input.addEventListener('input',()=>geoInvalidate('client')));
         $('#geoClient').onclick=()=>geoPresentCandidates('client',getFields());
         $('#clientGoogleAddress').onclick=()=>geoSearchGoogle(getFields().address.value,
