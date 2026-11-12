@@ -56,3 +56,26 @@ La migración está versionada en GitHub, **no fue aplicada a Supabase productiv
 - El estado `geo_verificada` significa **confirmación del usuario**, no auditoría externa.
 - La validación localiza calles y localidades en las etiquetas devueltas por Nominatim; ciertas direcciones legítimas de localidades con nombres alternativos pueden necesitar confirmación manual.
 - No hay geocodificación masiva ni se trasladan coordenadas históricas sin revisión.
+
+## Corrección de altura e importación de enlaces — 12/11/2026
+
+- Un resultado de Nominatim sin `house_number` **no se considera exacto** si la dirección solicitada contiene una altura.
+- Una altura diferente también se rechaza. Las coincidencias parciales se muestran como referencias de calle, **sin botón «Usar este punto»**.
+- En pedidos y clientes se agregó «Pegá un enlace completo de Google Maps» y «Extraer coordenadas del enlace».
+- Solo se aceptan URLs de dominios Google Maps admitidos y con coordenadas inequívocas del **destino**: `!3dLAT!4dLNG`, parámetros `q`, `query`, `destination`, `daddr` numéricos, o rutas `/maps/search/LAT,LNG` y `/maps/place/LAT,LNG`.
+- No se acepta `@lat,lng`: identifica el **centro de la cámara**, no necesariamente el domicilio.
+- No se aceptan enlaces abreviados `maps.app.goo.gl` ni `goo.gl`: sin resolver la redirección no es posible comprobar las coordenadas del destino.
+- La importación **no marca el punto como verificado**: exige confirmación explícita del usuario antes de guardar.
+- Las coordenadas importadas se registran con fuente `manual`; no requieren migración SQL adicional.
+
+### Casos para probar en localhost
+
+1. Ecuador 3109 con resultado Nominatim «33 - Ecuador» debe aparecer solo como referencia parcial, sin selección.
+2. Un candidato Ecuador 515 tampoco debe poder seleccionarse para Ecuador 3109.
+3. Pegar `https://www.google.com/maps/search/?api=1&query=-34.551328%2C-58.530750`: extraer coordenadas y pedir confirmación.
+4. Pegar un enlace que solo contenga `/@-34.551328,-58.530750,17z`: rechazar por centro de mapa.
+5. Pegar `https://maps.app.goo.gl/...`: solicitar URL completa.
+6. Pegar un enlace de un dominio ajeno a Google: rechazar.
+7. Confirmar coordenadas, guardar y reabrir pedido/cliente: conservar latitud, longitud y estado verificado.
+
+**Estado de pruebas:** sintaxis JS validada y comprobaciones unitarias de coincidencia de alturas ejecutadas; las URLs requieren prueba funcional en navegador.
