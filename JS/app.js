@@ -1173,16 +1173,16 @@ function geoCandidateCheck(candidate,address,locality,province) {
  const localityMatches=Boolean(desiredTown&&towns.some(t=>t===desiredTown||t.includes(desiredTown)||desiredTown.includes(t)));
  const provinceMatches=!desiredProvince||!provinceText||
   provinceText.includes(desiredProvince)||desiredProvince.includes(provinceText);
- const numberMatches=!house||!returnedHouse||house===returnedHouse;
- const valid=geoValidPoint(candidate.lat,candidate.lon)&&streetMatches&&
-  localityMatches&&provinceMatches&&numberMatches;
+ const numberMatches=!house||Boolean(returnedHouse&&house===returnedHouse);
+ const partial=geoValidPoint(candidate.lat,candidate.lon)&&streetMatches&&localityMatches&&provinceMatches;
+ const valid=partial&&numberMatches;
  const notes=[];
  if(!streetMatches)notes.push('calle diferente');
  if(!localityMatches)notes.push('localidad no coincidente');
  if(!provinceMatches)notes.push('provincia diferente');
  if(!numberMatches)notes.push('altura diferente');
  if(house&&!returnedHouse)notes.push('altura no verificada');
- return {valid,notes,precise:Boolean(returnedHouse&&house===returnedHouse)};
+ return {valid,partial:partial&&!valid,notes,precise:Boolean(house&&returnedHouse&&house===returnedHouse)};
 }
 async function geoLookup(address,locality,province) {
  if(!String(address||'').trim()||!String(locality||'').trim()||!String(province||'').trim())
@@ -1208,6 +1208,51 @@ async function geoLookup(address,locality,province) {
  const matched=candidates.map(point=>({...point,check:geoCandidateCheck(point,address,locality,province)}));
  geoLookupCache.set(cacheKey,matched);
  return matched;
+}
+function geoParseGoogleMapsUrl(raw) {
+ const input=String(raw||'').trim();
+ if(!input)throw Error('Pegá un enlace de Google Maps.');
+ let url;
+ try {url=new URL(input);} catch {throw Error('El enlace no es una URL válida.');}
+ if(url.protocol!=='https:'&&url.protocol!=='http:')throw Error('Usá un enlace HTTPS de Google Maps.');
+ const hostname=url.hostname.toLowerCase();
+ const allowed=hostname==='google.com'||hostname.endsWith('.google.com')||
+  hostname==='google.com.ar'||hostname.endsWith('.google.com.ar')||
+  hostname==='maps.app.goo.gl'||hostname==='goo.gl';
+ if(!allowed)throw Error('Solo se aceptan enlaces de Google Maps.');
+ if(hostname==='maps.app.goo.gl'||hostname==='goo.gl')
+  throw Error('El enlace abreviado no contiene coordenadas verificables. Abrí Google Maps y copiá el enlace completo.');
+ const text=decodeURIComponent(url.pathname+url.search+url.hash);
+ const matches=[];
+ // Google Maps: !3dLAT!4dLNG apunta al lugar; @LAT,LNG es solamente el centro de la cámara.
+ const pin=[...text.matchAll(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/g)];
+ for(const m of pin)matches.push([Number(m[1]),Number(m[2])]);
+ // URLs explícitas: ?q=-34.55,-58.53, ?query=... y ?destination=...
+ for(const name of ['q','query','destination','daddr']){
+  const val=url.searchParams.get(name);
+  const match=val?.trim().match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/);
+  if(match)matches.push([Number(match[1]),Number(match[2])]);
+ }
+ // /maps/search/-34.55,-58.53 o /maps/place/-34.55,-58.53
+ const pathMatch=url.pathname.match(/\/maps\/(?:search|place)\/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:\/|$)/);
+ if(pathMatch)matches.push([Number(pathMatch[1]),Number(pathMatch[2])]);
+ if(!matches.length)throw Error('El enlace no contiene coordenadas del destino. El formato @lat,lng es el centro del mapa, no el punto de entrega.');
+ const [lat,lng]=matches[0];
+ if(!geoValidPoint(lat,lng))throw Error('Las coordenadas del enlace están fuera del rango de Argentina.');
+ if(matches.some(([a,b])=>Math.abs(a-lat)>0.00001||Math.abs(b-lng)>0.00001))
+  throw Error('El enlace contiene varios puntos diferentes. Copiá el enlace de un único marcador.');
+ return {lat,lng};
+}
+function geoImportGoogleMaps(kind,fields,raw) {
+ try {
+  const point=geoParseGoogleMapsUrl(raw);
+  fields.lat.value=String(point.lat);
+  fields.lng.value=String(point.lng);
+  geoForms[kind]={source:'manual',verified:false,dirty:true,
+   signature:geoSignature(fields.address.value,fields.locality.value,fields.province.value)};
+  fields.host.replaceChildren();
+  fields.status.textContent='Coordenadas extraídas del enlace. Verificá que correspondan al domicilio y pulsá Confirmar coordenadas.';
+ }catch(error){fields.status.textContent=error.message;}
 }
 function geoSearchGoogle(address,locality,province) {
  const q=[address,locality,province,'Argentina'].filter(Boolean).join(', ');
@@ -1240,16 +1285,19 @@ async function geoPresentCandidates(kind,fields) {
  try {
   const candidates=await geoLookup(address.value,locality.value,province.value);
   const valid=candidates.filter(c=>c.check.valid);
-  if(!valid.length) {
-   status.textContent='No hay coincidencias confiables para calle y localidad. Verificá la dirección en Google Maps y copiá las coordenadas.';
+  const partial=candidates.filter(c=>c.check.partial);
+  if(!valid.length&&!partial.length){
+   status.textContent='No se encontraron coincidencias confiables. Buscá la dirección en Google Maps y pegá el enlace con coordenadas.';
    return;
   }
-  status.textContent='Elegí un resultado; ninguno se asigna automáticamente.';
-  for(const candidate of valid) {
+  status.textContent=valid.length?'Elegí una coincidencia exacta; ningún punto se asigna automáticamente.':
+   'Nominatim encontró la calle pero no la altura exacta. No se puede utilizar como destino; pegá un enlace de Google Maps con coordenadas.';
+  for(const candidate of [...valid,...partial]) {
    const row=document.createElement('div');
    row.className='geo-candidate';
    const summary=document.createElement('span');
-   summary.textContent=candidate.display_name+(candidate.check.precise?' · altura identificada':' · altura NO verificada');
+   summary.textContent=candidate.display_name+(candidate.check.valid?' · altura coincidente':' · SOLO REFERENCIA: altura no identificada o distinta');
+   if(!candidate.check.valid){row.append(summary);host.append(row);continue;}
    const choose=document.createElement('button');
    choose.type='button';choose.textContent='Usar este punto';
    choose.onclick=()=>{
@@ -1351,6 +1399,10 @@ function editEntity(type, id = null) {
                     Buscar coordenadas desde la dirección
                 </button>
                 <button type="button" id="clientGoogleAddress">Buscar en Google Maps</button>
+                <div class="geo-link-import">
+                 <input type="url" id="clientGoogleLink" placeholder="Pegá un enlace completo de Google Maps" aria-label="Enlace de Google Maps">
+                 <button type="button" id="clientImportGoogle">Extraer coordenadas del enlace</button>
+                </div>
                 <button type="button" id="clientConfirmGeo">Confirmar coordenadas</button>
                 <span id="entityGeoMsg" class="muted" role="status"></span>
                 <div id="clientGeoCandidates" class="geo-candidates"></div>
@@ -1376,6 +1428,7 @@ function editEntity(type, id = null) {
         $('#geoClient').onclick=()=>geoPresentCandidates('client',getFields());
         $('#clientGoogleAddress').onclick=()=>geoSearchGoogle(getFields().address.value,
             fieldsGeo.locality.value,fieldsGeo.province.value);
+        $('#clientImportGoogle').onclick=()=>geoImportGoogleMaps('client',getFields(),$('#clientGoogleLink').value);
         $('#clientConfirmGeo').onclick=()=>geoConfirmManual('client',getFields());
         fieldsGeo.status.textContent=geoForms.client.verified?'Coordenadas previamente verificadas.':
             'Coordenadas sin verificar.';
@@ -2114,6 +2167,7 @@ geoBindInputs('order',orderGeoFields());
 $('#geocodeOrder').onclick=()=>geoPresentCandidates('order',orderGeoFields());
 $('#orderGoogleAddress').onclick=()=>geoSearchGoogle(
  $('#oAddress').value,$('#oLocality').value,$('#oProvince').value);
+$('#orderImportGoogle').onclick=()=>geoImportGoogleMaps('order',orderGeoFields(),$('#orderGoogleLink').value);
 $('#orderConfirmGeo').onclick=()=>geoConfirmManual('order',orderGeoFields());
 
 
