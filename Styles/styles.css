@@ -1401,3 +1401,17 @@ header.app-header #logout:not(.hidden){color:white;background:transparent;border
 .geo-route-card .geo-route-meta{margin-top:0;margin-bottom:1px;line-height:1.2}
 .geo-route-card .geo-order-row{padding-top:1px;padding-bottom:1px}
 .geo-route-card .geo-order-row:first-of-type{margin-top:0}
+
+/* Geocodificación: candidatos explícitos y avisos con espacio suficiente. */
+.geo-candidates{display:grid;gap:7px;width:100%;flex-basis:100%;margin-top:8px}
+.geo-candidate{display:flex;align-items:center;justify-content:space-between;gap:12px;
+ border:1px solid var(--border,#d8e0e8);border-radius:8px;padding:9px 11px;background:var(--panel,#fff)}
+.geo-candidate span{font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+.geo-candidate button{flex-shrink:0}
+#geoMsg,#entityGeoMsg{font-size:12px;line-height:1.4;display:inline-block}
+@media(max-width:650px){.geo-candidate{flex-direction:column;align-items:stretch}.geo-candidate button{width:100%}}
+
+.geo-link-import{display:flex;align-items:center;gap:8px;flex:1 1 100%;width:100%;margin:6px 0}
+.geo-link-import input{flex:1 1 320px;min-width:0;width:auto}
+.geo-link-import button{flex:0 0 auto}
+@media(max-width:650px){.geo-link-import{flex-direction:column;align-items:stretch}.geo-link-import input,.geo-link-import button{width:100%;flex:auto}}

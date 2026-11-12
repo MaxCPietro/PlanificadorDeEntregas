@@ -1134,6 +1134,224 @@ const fields = {
 };
 
 
+
+/* Geocodificación validada: nunca asignar automáticamente el primer candidato.
+ * Nominatim público: consultas sólo con click, caché y espaciado mínimo.
+ */
+const geoLookupCache = new Map();
+let lastGeoLookup = 0;
+const geoForms = {order:{source:null,verified:false,signature:'',dirty:false},client:{source:null,verified:false,signature:'',dirty:false}};
+function geoNormalize(value) {
+ return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .toLowerCase().replace(/\b(av\.?|avenida)\b/g,'avenida')
+  .replace(/\b(gral\.?|general)\b/g,'general')
+  .replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+}
+function geoNumber(address) {
+ const match=String(address||'').match(/(?:^|\s)(\d{1,5})(?:\s|$)/);
+ return match?match[1]:null;
+}
+function geoSignature(address,locality,province) {
+ return [address,locality,province].map(geoNormalize).join('|');
+}
+function geoValidPoint(lat,lng) {
+ return Number.isFinite(Number(lat))&&Number.isFinite(Number(lng))&&
+  Number(lat)>=-56&&Number(lat)<=-21&&Number(lng)>=-74&&Number(lng)<=-53;
+}
+function geoCandidateCheck(candidate,address,locality,province) {
+ const a=candidate.address||{};
+ const street=geoNormalize(a.road||a.pedestrian||a.residential||a.street||a.path||'');
+ const expectedStreet=geoNormalize(String(address||'').replace(/\b\d{1,5}\b/g,''));
+ const house=geoNumber(address);
+ const returnedHouse=String(a.house_number||'').match(/\d+/)?.[0]||null;
+ const towns=[a.city,a.town,a.village,a.municipality,a.county,a.city_district,a.suburb]
+  .map(geoNormalize).filter(Boolean);
+ const desiredTown=geoNormalize(locality);
+ const provinceText=geoNormalize(a.state||a.province||'');
+ const desiredProvince=geoNormalize(province);
+ const streetMatches=Boolean(street&&expectedStreet&&(street.includes(expectedStreet)||expectedStreet.includes(street)));
+ const localityMatches=Boolean(desiredTown&&towns.some(t=>t===desiredTown||t.includes(desiredTown)||desiredTown.includes(t)));
+ const provinceMatches=!desiredProvince||!provinceText||
+  provinceText.includes(desiredProvince)||desiredProvince.includes(provinceText);
+ const numberMatches=!house||Boolean(returnedHouse&&house===returnedHouse);
+ const partial=geoValidPoint(candidate.lat,candidate.lon)&&streetMatches&&localityMatches&&provinceMatches;
+ const valid=partial&&numberMatches;
+ const notes=[];
+ if(!streetMatches)notes.push('calle diferente');
+ if(!localityMatches)notes.push('localidad no coincidente');
+ if(!provinceMatches)notes.push('provincia diferente');
+ if(!numberMatches)notes.push('altura diferente');
+ if(house&&!returnedHouse)notes.push('altura no verificada');
+ return {valid,partial:partial&&!valid,notes,precise:Boolean(house&&returnedHouse&&house===returnedHouse)};
+}
+async function geoLookup(address,locality,province) {
+ if(!String(address||'').trim()||!String(locality||'').trim()||!String(province||'').trim())
+  throw Error('Completá dirección, localidad y provincia antes de buscar.');
+ const query=[address,locality,province,'Argentina'].join(', ');
+ const cacheKey=geoSignature(address,locality,province);
+ if(geoLookupCache.has(cacheKey))return geoLookupCache.get(cacheKey);
+ const now=Date.now();
+ // En el servidor público de Nominatim, no exceder una solicitud por segundo.
+ if(now-lastGeoLookup<1100)throw Error('Esperá un segundo antes de iniciar otra búsqueda.');
+ lastGeoLookup=now;
+ const url=new URL('https://nominatim.openstreetmap.org/search');
+ url.searchParams.set('format','jsonv2');
+ url.searchParams.set('addressdetails','1');
+ url.searchParams.set('limit','5');
+ url.searchParams.set('countrycodes','ar');
+ url.searchParams.set('viewbox','-59.8,-33.8,-57.8,-35.5'); // Preferencia AMBA, no límite estricto.
+ url.searchParams.set('q',query);
+ const response=await fetch(url.toString(),{headers:{Accept:'application/json'}});
+ if(!response.ok)throw Error('Servicio de geocodificación no disponible ('+response.status+').');
+ const candidates=await response.json();
+ if(!Array.isArray(candidates))throw Error('Respuesta de geocodificación inválida.');
+ const matched=candidates.map(point=>({...point,check:geoCandidateCheck(point,address,locality,province)}));
+ geoLookupCache.set(cacheKey,matched);
+ return matched;
+}
+function geoParseGoogleMapsUrl(raw) {
+ const input=String(raw||'').trim();
+ if(!input)throw Error('Pegá un enlace de Google Maps.');
+ let url;
+ try {url=new URL(input);} catch {throw Error('El enlace no es una URL válida.');}
+ if(url.protocol!=='https:'&&url.protocol!=='http:')throw Error('Usá un enlace HTTPS de Google Maps.');
+ const hostname=url.hostname.toLowerCase();
+ const allowed=hostname==='google.com'||hostname.endsWith('.google.com')||
+  hostname==='google.com.ar'||hostname.endsWith('.google.com.ar')||
+  hostname==='maps.app.goo.gl'||hostname==='goo.gl';
+ if(!allowed)throw Error('Solo se aceptan enlaces de Google Maps.');
+ if(hostname==='maps.app.goo.gl'||hostname==='goo.gl')
+  throw Error('El enlace abreviado no contiene coordenadas verificables. Abrí Google Maps y copiá el enlace completo.');
+ const text=decodeURIComponent(url.pathname+url.search+url.hash);
+ const matches=[];
+ // Google Maps: !3dLAT!4dLNG apunta al lugar; @LAT,LNG es solamente el centro de la cámara.
+ const pin=[...text.matchAll(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/g)];
+ for(const m of pin)matches.push([Number(m[1]),Number(m[2])]);
+ // URLs explícitas: ?q=-34.55,-58.53, ?query=... y ?destination=...
+ for(const name of ['q','query','destination','daddr']){
+  const val=url.searchParams.get(name);
+  const match=val?.trim().match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/);
+  if(match)matches.push([Number(match[1]),Number(match[2])]);
+ }
+ // /maps/search/-34.55,-58.53 o /maps/place/-34.55,-58.53
+ const pathMatch=url.pathname.match(/\/maps\/(?:search|place)\/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)(?:\/|$)/);
+ if(pathMatch)matches.push([Number(pathMatch[1]),Number(pathMatch[2])]);
+ if(!matches.length)throw Error('El enlace no contiene coordenadas del destino. El formato @lat,lng es el centro del mapa, no el punto de entrega.');
+ const [lat,lng]=matches[0];
+ if(!geoValidPoint(lat,lng))throw Error('Las coordenadas del enlace están fuera del rango de Argentina.');
+ if(matches.some(([a,b])=>Math.abs(a-lat)>0.00001||Math.abs(b-lng)>0.00001))
+  throw Error('El enlace contiene varios puntos diferentes. Copiá el enlace de un único marcador.');
+ return {lat,lng};
+}
+function geoImportGoogleMaps(kind,fields,raw) {
+ try {
+  const point=geoParseGoogleMapsUrl(raw);
+  fields.lat.value=String(point.lat);
+  fields.lng.value=String(point.lng);
+  geoForms[kind]={source:'manual',verified:false,dirty:true,
+   signature:geoSignature(fields.address.value,fields.locality.value,fields.province.value)};
+  fields.host.replaceChildren();
+  fields.status.textContent='Coordenadas extraídas del enlace. Verificá que correspondan al domicilio y pulsá Confirmar coordenadas.';
+ }catch(error){fields.status.textContent=error.message;}
+}
+function geoSearchGoogle(address,locality,province) {
+ const q=[address,locality,province,'Argentina'].filter(Boolean).join(', ');
+ window.open('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q),'_blank','noopener,noreferrer');
+}
+function geoSetStatus(kind,source,verified,address,locality,province) {
+ const state=geoForms[kind];
+ state.source=source;state.verified=verified;
+ state.signature=geoSignature(address,locality,province);
+ state.dirty=false;
+}
+function geoInvalidate(kind,clearCoordinates=false) {
+ geoForms[kind]={source:null,verified:false,signature:'',dirty:true};
+ if(clearCoordinates){
+  const inputs=kind==='order'?
+   [document.querySelector('#oLat'),document.querySelector('#oLng')]:
+   [document.querySelector('#entityFields [data-field="latitud"]'),
+    document.querySelector('#entityFields [data-field="longitud"]')];
+  inputs.forEach(input=>{if(input)input.value='';});
+ }
+ const host=document.querySelector(kind==='order'?'#orderGeoCandidates':'#clientGeoCandidates');
+ if(host)host.replaceChildren();
+ const status=document.querySelector(kind==='order'?'#geoMsg':'#entityGeoMsg');
+ if(status)status.textContent='Coordenadas sin verificar. Realizá una búsqueda o confirmalas manualmente.';
+}
+async function geoPresentCandidates(kind,fields) {
+ const {address,locality,province,lat,lng,host,status}=fields;
+ host.replaceChildren();
+ status.textContent='Buscando hasta 5 coincidencias…';
+ try {
+  const candidates=await geoLookup(address.value,locality.value,province.value);
+  const valid=candidates.filter(c=>c.check.valid);
+  const partial=candidates.filter(c=>c.check.partial);
+  if(!valid.length&&!partial.length){
+   status.textContent='No se encontraron coincidencias confiables. Buscá la dirección en Google Maps y pegá el enlace con coordenadas.';
+   return;
+  }
+  status.textContent=valid.length?'Elegí una coincidencia exacta; ningún punto se asigna automáticamente.':
+   'Nominatim encontró la calle pero no la altura exacta. No se puede utilizar como destino; pegá un enlace de Google Maps con coordenadas.';
+  for(const candidate of [...valid,...partial]) {
+   const row=document.createElement('div');
+   row.className='geo-candidate';
+   const summary=document.createElement('span');
+   summary.textContent=candidate.display_name+(candidate.check.valid?' · altura coincidente':' · SOLO REFERENCIA: altura no identificada o distinta');
+   if(!candidate.check.valid){row.append(summary);host.append(row);continue;}
+   const choose=document.createElement('button');
+   choose.type='button';choose.textContent='Usar este punto';
+   choose.onclick=()=>{
+    // No aplicar resultados obsoletos si se editó la dirección desde la búsqueda.
+    if(geoSignature(address.value,locality.value,province.value)!==
+       geoSignature(fields.requestAddress,fields.requestLocality,fields.requestProvince)){
+     status.textContent='La dirección cambió. Repetí la búsqueda.';host.replaceChildren();return;
+    }
+    lat.value=candidate.lat;lng.value=candidate.lon;
+    geoSetStatus(kind,'nominatim',false,address.value,locality.value,province.value);
+    geoForms[kind].dirty=true;
+    status.textContent=candidate.check.precise?
+     'Punto seleccionado: verificá en Google Maps y pulsá Confirmar coordenadas.':
+     'Altura no verificada: comprobá visualmente en Google Maps y pulsá Confirmar coordenadas.';
+    host.replaceChildren();
+   };
+   row.append(summary,choose);host.append(row);
+  }
+ } catch(e) {status.textContent=e.message;}
+}
+function geoBindInputs(kind,fields) {
+ const {address,locality,province,lat,lng}=fields;
+ [address,locality,province].forEach(input=>input.addEventListener('input',()=>geoInvalidate(kind,true)));
+ [lat,lng].forEach(input=>input.addEventListener('input',()=>{
+  geoInvalidate(kind);
+  if(geoValidPoint(lat.value,lng.value))fields.status.textContent='Coordenadas editadas. Confirmalas manualmente.';
+ }));
+}
+function geoConfirmManual(kind,fields) {
+ if(!geoValidPoint(fields.lat.value,fields.lng.value)){
+  fields.status.textContent='Ingresá latitud y longitud válidas dentro de Argentina.';return;
+ }
+ geoSetStatus(kind,geoForms[kind].source==='nominatim'?'nominatim':'manual',true,
+  fields.address.value,fields.locality.value,fields.province.value);
+ fields.status.textContent='Coordenadas confirmadas manualmente. Verificá el punto en Google Maps.';
+ fields.host.replaceChildren();
+}
+function geoCanSave(kind,fields) {
+ const state=geoForms[kind];
+ const hasCoords=String(fields.lat.value||'').trim()||String(fields.lng.value||'').trim();
+ if(hasCoords&&state.dirty&&!state.verified){
+  fields.status.textContent='Confirmá las coordenadas antes de guardar, o borrá ambos campos.';
+  return false;
+ }
+ return true;
+}
+function geoMetaForSave(kind,fields) {
+ const state=geoForms[kind];
+ const signature=geoSignature(fields.address.value,fields.locality.value,fields.province.value);
+ const active=state.verified&&state.signature===signature&&
+  geoValidPoint(fields.lat.value,fields.lng.value);
+ return {geo_fuente:active?state.source:null,geo_verificada:active};
+}
+
 function editEntity(type, id = null) {
     const row = id
         ? cache[type].find(x => x.id === id)
@@ -1180,44 +1398,40 @@ function editEntity(type, id = null) {
                 <button type="button" id="geoClient">
                     Buscar coordenadas desde la dirección
                 </button>
-                <span id="entityGeoMsg" class="muted"></span>
+                <button type="button" id="clientGoogleAddress">Buscar en Google Maps</button>
+                <div class="geo-link-import">
+                 <input type="url" id="clientGoogleLink" placeholder="Pegá un enlace completo de Google Maps" aria-label="Enlace de Google Maps">
+                 <button type="button" id="clientImportGoogle">Extraer coordenadas del enlace</button>
+                </div>
+                <button type="button" id="clientConfirmGeo">Confirmar coordenadas</button>
+                <span id="entityGeoMsg" class="muted" role="status"></span>
+                <div id="clientGeoCandidates" class="geo-candidates"></div>
                </div>`
             : ''
     );
 
-    if (type === 'clientes') {
-        $('#geoClient').onclick = async () => {
-            const v = k =>
-                $('#entityFields [data-field="' + k + '"]');
-
-            const q = [
-                v('direccion_entrega').value ||
-                    v('direccion').value,
-                v('localidad').value,
-                v('provincia').value,
-                'Argentina'
-            ].filter(Boolean).join(', ');
-
-            $('#entityGeoMsg').textContent = 'Buscando…';
-
-            try {
-                const j = await fetch(
-                    'https://nominatim.openstreetmap.org/search' +
-                    '?format=jsonv2&limit=1&countrycodes=ar&q=' +
-                    encodeURIComponent(q)
-                ).then(r => r.json());
-
-                if (!j.length) {
-                    throw Error('Dirección no encontrada');
-                }
-
-                v('latitud').value = j[0].lat;
-                v('longitud').value = j[0].lon;
-                $('#entityGeoMsg').textContent = j[0].display_name;
-            } catch (e) {
-                $('#entityGeoMsg').textContent = e.message;
-            }
-        };
+    if(type==='clientes'){
+        const v=k=>$('#entityFields [data-field="'+k+'"]');
+        const fieldsGeo={address:v('direccion_entrega').value?v('direccion_entrega'):v('direccion'),
+            locality:v('localidad'),province:v('provincia'),
+            lat:v('latitud'),lng:v('longitud'),
+            host:$('#clientGeoCandidates'),status:$('#entityGeoMsg')};
+        const getFields=()=>({...fieldsGeo,
+            address:v('direccion_entrega').value?v('direccion_entrega'):v('direccion'),
+            requestAddress:(v('direccion_entrega').value||v('direccion').value),
+            requestLocality:v('localidad').value,requestProvince:v('provincia').value});
+        geoForms.client={source:row.geo_fuente||null,verified:row.geo_verificada===true,
+            signature:geoSignature(fieldsGeo.address.value,fieldsGeo.locality.value,fieldsGeo.province.value)};
+        [v('direccion'),v('direccion_entrega'),v('localidad'),v('provincia')].forEach(input=>
+            input.addEventListener('input',()=>geoInvalidate('client',true)));
+        [fieldsGeo.lat,fieldsGeo.lng].forEach(input=>input.addEventListener('input',()=>geoInvalidate('client')));
+        $('#geoClient').onclick=()=>geoPresentCandidates('client',getFields());
+        $('#clientGoogleAddress').onclick=()=>geoSearchGoogle(getFields().address.value,
+            fieldsGeo.locality.value,fieldsGeo.province.value);
+        $('#clientImportGoogle').onclick=()=>geoImportGoogleMaps('client',getFields(),$('#clientGoogleLink').value);
+        $('#clientConfirmGeo').onclick=()=>geoConfirmManual('client',getFields());
+        fieldsGeo.status.textContent=geoForms.client.verified?'Coordenadas previamente verificadas.':
+            'Coordenadas sin verificar.';
     }
 
     $('#entityDlg').showModal();
@@ -1243,6 +1457,14 @@ $('#entityForm').onsubmit = async e => {
             data[key] = el.value.trim() || null;
         }
     });
+
+    if(type==='clientes'){
+        const v=k=>$('#entityFields [data-field="'+k+'"]');
+        const fieldsGeo={address:v('direccion_entrega').value?v('direccion_entrega'):v('direccion'),
+            locality:v('localidad'),province:v('provincia'),lat:v('latitud'),lng:v('longitud')};
+        if(!geoCanSave('client',{...fieldsGeo,status:$('#entityGeoMsg')}))return;
+        Object.assign(data,geoMetaForSave('client',fieldsGeo));
+    }
 
     if (type === 'productos' && data.precio == null) {
         data.precio = 0;
@@ -1527,8 +1749,12 @@ function clientChanged() {
     $('#oLat').value = toNum(c.latitud);
     $('#oLng').value = toNum(c.longitud);
 
-    $('#geoMsg').textContent =
-        'Datos completados desde la ficha del cliente';
+    geoForms.order={source:c.geo_fuente||null,verified:c.geo_verificada===true,
+        signature:geoSignature($('#oAddress').value,$('#oLocality').value,$('#oProvince').value)};
+    $('#orderGeoCandidates')?.replaceChildren();
+    $('#geoMsg').textContent=geoForms.order.verified?
+        'Coordenadas verificadas en la ficha del cliente.':
+        'Coordenadas cargadas desde el cliente, sin verificar.';
 }
 
 
@@ -1590,7 +1816,9 @@ function newOrder() {
 
     $('#productLines').innerHTML = '';
     calcTotal();
-    $('#geoMsg').textContent = '';
+    geoForms.order={source:null,verified:false,signature:''};
+    $('#orderGeoCandidates')?.replaceChildren();
+    $('#geoMsg').textContent = 'Coordenadas sin verificar.';
 
     $('#deleteOrder').classList.add('hidden');
 
@@ -1638,6 +1866,10 @@ async function editOrder(id) {
     $('#oLat').value = toNum(p.latitud);
     $('#oLng').value = toNum(p.longitud);
     $('#oNotes').value = p.observaciones || '';
+    geoForms.order={source:p.geo_fuente||null,verified:p.geo_verificada===true,
+        signature:geoSignature($('#oAddress').value,$('#oLocality').value,$('#oProvince').value)};
+    $('#orderGeoCandidates')?.replaceChildren();
+    $('#geoMsg').textContent=geoForms.order.verified?'Coordenadas verificadas.':'Coordenadas sin verificar.';
 
     $('#productLines').innerHTML = '';
 
@@ -1925,36 +2157,18 @@ $('#verifyOrderMap').onclick = () => {
     window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng), '_blank', 'noopener,noreferrer');
 };
 
-$('#geocodeOrder').onclick = async () => {
-    const q = [
-        $('#oAddress').value,
-        $('#oLocality').value,
-        $('#oProvince').value,
-        'Argentina'
-    ].filter(Boolean).join(', ');
-
-    $('#geoMsg').textContent = 'Buscando…';
-
-    try {
-        const j = await fetch(
-            'https://nominatim.openstreetmap.org/search' +
-            '?format=jsonv2&limit=1&countrycodes=ar&q=' +
-            encodeURIComponent(q)
-        ).then(r => r.json());
-
-        if (!j.length) {
-            throw Error('No se encontró la dirección');
-        }
-
-        $('#oLat').value = j[0].lat;
-        $('#oLng').value = j[0].lon;
-
-        $('#geoMsg').textContent =
-            'Coordenadas encontradas; verificá el punto en el mapa';
-    } catch (e) {
-        $('#geoMsg').textContent = e.message;
-    }
-};
+const orderGeoFields=()=>({
+ address:$('#oAddress'),locality:$('#oLocality'),province:$('#oProvince'),
+ lat:$('#oLat'),lng:$('#oLng'),host:$('#orderGeoCandidates'),status:$('#geoMsg'),
+ requestAddress:$('#oAddress').value,requestLocality:$('#oLocality').value,
+ requestProvince:$('#oProvince').value
+});
+geoBindInputs('order',orderGeoFields());
+$('#geocodeOrder').onclick=()=>geoPresentCandidates('order',orderGeoFields());
+$('#orderGoogleAddress').onclick=()=>geoSearchGoogle(
+ $('#oAddress').value,$('#oLocality').value,$('#oProvince').value);
+$('#orderImportGoogle').onclick=()=>geoImportGoogleMaps('order',orderGeoFields(),$('#orderGoogleLink').value);
+$('#orderConfirmGeo').onclick=()=>geoConfirmManual('order',orderGeoFields());
 
 
 /* ============================================================
@@ -1972,6 +2186,8 @@ $('#orderForm').onsubmit = async e => {
         toast('Elegí un cliente válido');
         return;
     }
+
+    if(!geoCanSave('order',orderGeoFields()))return;
 
     const selectedStatus = $('#oStatus').value;
     const chosenDate = selectedStatus === 'PENDIENTE - SIN LIBERAR' ? null : ($('#oDelivery').value || null);
@@ -1998,6 +2214,7 @@ $('#orderForm').onsubmit = async e => {
 
         latitud: numOrNull($('#oLat').value),
         longitud: numOrNull($('#oLng').value),
+        ...geoMetaForSave('order',orderGeoFields()),
 
         observaciones: $('#oNotes').value.trim() || null
     };
@@ -2085,10 +2302,11 @@ $('#orderForm').onsubmit = async e => {
     // Sincronizar los datos de entrega del pedido con la ficha del cliente.
     // Solo actualizamos los campos que cambiaron para evitar escrituras innecesarias.
     const clientUpdates = {};
-    for (const field of ['direccion_entrega', 'latitud', 'longitud']) {
+    for (const field of ['direccion_entrega', 'latitud', 'longitud', 'geo_fuente', 'geo_verificada']) {
         const previous = field === 'direccion_entrega'
             ? (c[field] || null)
-            : (c[field] == null ? null : Number(c[field]));
+            : (field==='latitud'||field==='longitud'
+                ? (c[field]==null?null:Number(c[field])) : c[field]??null);
         if (previous !== data[field]) {
             clientUpdates[field] = data[field];
         }
