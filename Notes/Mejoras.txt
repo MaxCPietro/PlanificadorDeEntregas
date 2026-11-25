@@ -13,6 +13,9 @@ Version 6 (Cambios Menores)
 OK 2) Sacar los fitros de arriba y ponerlos donde correspondan en cada subsección.
 OK 3) Paginacion
 
+Arreglos
+* Se tiene que limpiar el campo de dirección manual.
+
 Version 6.1
 * que en la ficha de pueda distiguir si la vta es remito o factura.
 * Mejorar algoritmo de optimizacion
